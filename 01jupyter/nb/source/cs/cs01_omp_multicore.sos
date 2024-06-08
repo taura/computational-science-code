@@ -1,0 +1,429 @@
+<!--- md --->
+
+#* 高性能プログラミングと性能測定(1) --- OpenMP CPUマルチコアプログラミング
+
+<!--- end md --->
+
+<!--- md ---> 
+
+# OpenMP
+
+* OpenMPはCPUでマルチコア並列処理を行うための標準(デファクトスタンダード)
+* 新しい仕様ではGPUもサポートしている(どこまでサポートしているかはコンパイラ依存)
+
+* 詳しい仕様が知りたくなったら https://openmp.org/ を参照
+  * 最新仕様 https://www.openmp.org/spec-html/5.2/openmp.html
+  * 簡潔な文法のリファレンス: https://www.openmp.org/resources/refguides/
+* 最小限の覚えるべきキーワード
+  * `#pragma omp parallel`
+  * `#pragma omp for`
+  * `reduction`
+* 最小限の覚えるべきAPI関数
+```
+#include <omp.h> 
+```
+して
+  * omp_get_num_threads();
+  * omp_get_thread_num();
+
+<!--- end md --->
+
+<!--- md --->
+# コンパイラ
+
+* この演習環境では, 同じコンパイラでCPUもGPUもサポートしているという理由で, NVIDIA HPC SDKを使う
+* ただし, 世の中的にはCPU上のプログラミングといえば gcc, clang (LLVM) などが主流なので, それらも紹介しておく
+
+## NVIDIA HPC SDK
+
+* コマンド名:
+  * C: `nvc`
+  * C++: `nvc++`
+* コンパイルオプション:
+  * `-mp=multicore` をつけると CPU用のOpenMPがサポートされる
+  * `-mp=gpu` をつけると GPU用のOpenMPがサポートされる (次週)
+
+## GCC
+
+* コマンド名:
+  * C: `gcc`
+  * C++: `g++`
+* コンパイルオプション:
+  * `-fopenmp` をつけると CPU用のOpenMPがサポートされる
+
+## Clang
+
+* コマンド名:
+  * C: `clang`
+  * C++: `clang++`
+* コンパイルオプション:
+  * `-openmp` をつけると CPU用のOpenMPがサポートされる
+
+<!--- end md ---> 
+
+<!--- md ---> 
+# `#pragma omp parallel` 構文
+
+* OpenMPで, 「これがなくては始まらない」プリミティブ
+* OpenMPプログラムは1スレッドで実行を開始し(MPIのようにmain関数が複数実行されるのではない), `#pragma omp parallel`に差し掛かると直後に書かれた文を複数のスレッドが実行する
+* いくつできるかの規則や制御方法にはいくつかあるが, もっとも基本的なルールは, 実行時の環境変数OMP_NUM_THREADSで指定した数, というもの
+
+* 以下を実行すると, `#pragma omp parallel`の直下に書かれた文 printf("world\n") が複数のスレッドによって実行される
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_hello.c
+<!--- include nb/source/cs/include/omp_hello.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp omp_hello.c -o omp_hello
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=3 ./omp_hello
+<!--- end code --->
+
+<!--- md --->
+
+* 文法
+```
+#pragma omp parallel
+文
+```
+* 意味
+ * 「文」を複数のスレッドで実行する(典型的には OMP_NUM_THREADS で指定した数)
+  * それらのスレッドを, その文を実行する<font color="blue">チーム</font>と呼ぶ
+ * チームの全スレッドが「文」を実行し終えると, `#pragma omp parallel` 全体が実行を終える
+ * 再び1スレッドに戻って以降の文を実行する
+* 注
+ * 複数のスレッドが実行するのは `#pragma omp parallel` の直下に書かれたひとつの文だが, この文自体が複合文 (`{ ... }` で囲まれた複数の文をまとめて一つの文とみなしたもの)だったり, ループだったり, 関数呼び出しを含んで, その関数の中に多数の文を含んでいることがあるので, 実際には複数スレッドで実行される文の数はいくらでも多数であり得る
+
+<!--- end md --->
+
+<!--- md ---> 
+# omp_num_threads() と omp_thread_num()
+
+*
+```
+#pragma omp parallel
+  S
+```
+によってSを実行中のスレッドは, 
+ * omp_num_threads() によってSを実行しているチームのスレッド数
+ * omp_thread_num() によってその中での自分の番号(スレッド数を$n$として, 0以上$n$未満の数)
+を得ることが出来る
+
+* これらを使う場合
+
+<pre>
+#include <omp.h>
+</pre>
+
+しておく
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_hello_rank.c
+<!--- include nb/source/cs/include/omp_hello_rank.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp omp_hello_rank.c -o omp_hello_rank
+<!--- end code --->
+
+<!--- md --->
+
+ * OMP_NUM_THREADSには自由な数を指定してよいが, CPUに搭載されているプロセッサ数(物理コア数や仮想コア(ハードウェアスレッド)数, 詳細は後述)よりも大きくしてもまず意味はない
+ * OMP_NUM_THREADSに何も指定しなければ自動的にハードウェアスレッド数のスレッドが使われる
+ * 以下ではこのページがホストされているクラウド環境のハードウェアスレッド数がわかる
+
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=3 ./omp_hello_rank
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+./omp_hello_rank
+<!--- end code --->
+
+
+<!--- md --->
+
+* この環境のCPU
+
+<!--- end md --->
+
+<!--- code kernel=bash --->
+cat /proc/cpuinfo | head -30
+<!--- end code --->
+
+<!--- md --->
+
+# CPU, コア, 仮想コア(ハードウェアスレッド)
+
+* 最近の<font color="blue">CPU</font>はマルチコアCPUで, 1つのチップに複数の, 独立に実行可能な<font color="blue">「コア」</font>が搭載されている
+* ひとつのボード(計算ノード)に複数のCPUが搭載されていることもある(<font color="blue">マルチソケット</font>環境)
+* さらにひとつのコアにも独立に命令を実行可能な, <font color="blue">「仮想コア(ハードウェアスレッド)」</font>が搭載されている
+* 田浦 <a href="https://taura.github.io/cs-alliance/slides/pdf/taura_lecture.pdf" target="_blank">講義スライド</a> pXXを参照
+* ソフトウェア(OS)からは仮想コアがひとつのプロセッサとして見える
+* ただしハードウェアスレッドは起動時にOFFにすることもでき, その場合は観測されるプロセッサ数は, 物理コア数になる
+* OSから見えているプロセッサ数は以下のコマンドで観測できる
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+nproc
+<!--- end code --->
+
+<!--- md --->
+
+* コアを, 仮想コアと区別して「物理コア」と呼ぶこともある
+* 物理コアとか仮想コアの違いはソフトウェアからはほとんど見えないが, 同一の物理コア上の仮想コアは演算器を共有しており, 「一サイクルに実行可能な浮動小数点演算数」みたいな数字は「コア」あたりの数字である. すでに限界性能に近いスレッドを二つ, 同一のコアに置いても性能は倍にならない
+
+<!--- end md --->
+
+<!--- md --->
+
+* `#pragma omp parallel`はその直下の文を「全員が(重複して)」実行する手段
+* 実際に処理を高速化するには一定量の仕事を複数のスレッドで「分割」して処理する必要がある
+* そのための手段が work sharing 構文. そのひとつが `#pragma omp for`
+<!--- end md --->
+
+<!--- md ---> 
+
+# `#pragma omp for` 構文
+
+* `#pragma omp parallel`で指定された文を実行中にスレッドが `#pragma omp for` に到達すると, その直下に書かれた文 (for 文でなくてはならない)の繰り返しをスレッド間で分け合って実行する
+* 仕事をスレッド間で分け合って実行するので, work sharing構文と呼ぶ 
+* OpenMPには他のwork sharing構文もあるがこの演習ではそれらはやらない
+<!--- end md --->
+
+<!--- md --->
+
+* 以下は簡単な例題として行列 x ベクトルを並列化したもの
+* 
+```
+#pragma omp for
+  for (long i = 0; i < n; i++) ...
+```
+によって, $n$回の繰り返しがスレッド間に別けて実行される
+* どのように分けられるかは schedule 句によって指定できる(後述)
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_mat_vec.c
+<!--- include nb/source/cs/include/omp_mat_vec.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp -march=native omp_mat_vec.c -o omp_mat_vec
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 ./omp_mat_vec
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=4 ./omp_mat_vec
+<!--- end code --->
+
+<!--- md --->
+
+* なお #pragma omp parallel の直後に #pragma omp for が来る場合両者をひとつの pragma で書ける
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_mat_vec_parallel_for.c
+<!--- include nb/source/cs/include/omp_mat_vec_parallel_for.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp -march=native omp_mat_vec_parallel_for.c -o omp_mat_vec_parallel_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 ./omp_mat_vec_parallel_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=4 ./omp_mat_vec_parallel_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+./omp_mat_vec_parallel_for
+<!--- end code --->
+
+<!--- md --->
+
+* 同じプログラムを `#pragma omp for` を用いずに, (手動で)繰り返しを分割して実行することも出来る
+* そのためには omp_get_num_threads() と omp_get_thread_num() を用いてどの繰り返しをどのスレッドが実行するかを決めてやれば良い
+* もちろんこの例においてわざわざそんなことをする意味はないが説明のために記す
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_mat_vec_wo_for.c
+<!--- include nb/source/cs/include/omp_mat_vec_wo_for.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp -march=native omp_mat_vec_wo_for.c -o omp_mat_vec_wo_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 ./omp_mat_vec_wo_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=4 ./omp_mat_vec_wo_for
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+./omp_mat_vec_wo_for
+<!--- end code --->
+
+
+<!--- md ---> 
+
+# OpenMPにおけるデータの共有
+
+* OpenMPのスレッドは基本的に全てのデータ(変数や配列)を<font color="blue">「共有」</font>している
+* 「共有」しているとは, 大雑把にいえば, どのスレッドが変数に書き込んだ値も, 他のスレッドに見えるということである
+* そのことはこれまでの例題プログラムでも暗黙的に前提としていたことで, 例えば以下で, 
+```
+  init_mat(n, (float(*)[n])A, 1);
+  init_vec(n, x, 1);
+  long long t0 = _rdtsc();
+  for (long r = 0; r < repeat; r++) {
+    mat_vec(n, (float(*)[n])A, x, y);
+  }
+  long long t1 = _rdtsc();
+  printf("%lld clocks\n", t1 - t0);
+  check_vec(n, y, n);
+```
+init_matやinit_vecでAやxに書き込んだ値が, mat_vecを実行している各スレッドで読めるのも, スレッドがデータを共有しているからである. また, 各スレッドがyに書き込んだ値が, check_vecの中で正しく読めるのみ同じ理由による
+
+* データが共有されているということは便利でもある一方で実は気をつけなくてはいけないことがある
+* 以下では, データが共有されていることで生ずる問題<font color="red">競合状態</font>とその解消法について説明する
+
+<!--- end md --->
+
+<!--- md ---> 
+
+# 競合状態
+
+* いつぞや取り上げた以下のコードをOpenMPで並列化することを考える
+* (説明の都合上ほんの少し変更している)
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile int_inv_1_x2_x.c
+<!--- include nb/source/cs/include/int_inv_1_x2_x.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -march=native int_inv_1_x2_x.c -o int_inv_1_x2_x
+<!--- end code --->
+
+<!--- md ---> 
+
+* ここにそのまま pragma parallel, pragma for を当てはめると以下のようになる
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_int_inv_1_x2_race.c
+<!--- include nb/source/cs/include/omp_int_inv_1_x2_race.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp -march=native omp_int_inv_1_x2_race.c -o omp_int_inv_1_x2_race
+<!--- end code --->
+
+<!--- md --->
+
+* 正解は $\pi/4$で 1スレッドで実行すれば問題なく正解が出る
+
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 time ./omp_int_inv_1_x2_race
+<!--- end code --->
+
+<!--- md --->
+
+* 2スレッド以上だと正解は出ない上, 毎回答えも違う(非決定的な挙動)
+
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=4 time ./omp_int_inv_1_x2_race
+<!--- end code --->
+
+<!--- md --->
+
+* その理由を考察する(講義スライド p80 〜に答えがある)
+
+<pre>
+#pragma omp parallel for
+  for (long i = 0; i < n; i++) {
+    double x = a + i * dx;
+    s += 1 / (1 + x * x);
+  }
+</pre>
+
+において, 変数 sは全部のスレッドで共有されている(注: x は parallel で実行される文の内部で定義されており, それはスレッドごとに別の変数になる. つまり共有されない)
+* 複数のスレッドが同じ変数sを更新することになる
+* よくないことが起きる具体的なシナリオはスライドp81 を参照. s += ... は実際には, s を読み出し, .... を足して, それをまたsに書き戻す. 読み出しから書き戻しまでの間に別のスレッドが s を更新するとおかしなことになる
+
+<!--- end md --->
+
+<!--- md ---> 
+
+* このように, 複数のスレッドが同じ変数を使っていて, 少なくとも一人は更新している状況を<font color="red">「競合状態」</font>と呼び, 大概のプログラムは意図した動作をしない
+* 競合状態があったら必ず何か手を打たないといけないと思っておくべき
+
+<!--- end md --->
+
+<!--- md ---> 
+
+## reduction 節を用いた解決法
+
+* 今回の変数 s に対する足し込みのような演算(もう少し一般的な話は後で述べる)に対してはとりわけ簡単な解決法
+* `#omp pragma parallel` もしくは `#omp pragma for` の中に reduction(演算:変数) という節を付け加えれば良い
+
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_int_inv_1_x2_reduction.c
+<!--- include nb/source/cs/include/omp_int_inv_1_x2_reduction.c  --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+gcc -O3 -fopenmp -march=native omp_int_inv_1_x2_reduction.c -o omp_int_inv_1_x2_reduction
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+time ./omp_int_inv_1_x2_reduction
+<!--- end code --->
+
+<!--- md ---> 
+
+* reductionは一般に多数の値を縮約する演算 o ($s = s_0 {\rm o} s_1 {\rm o}  ... {\rm o} s_{n-1}$)であって, 適用する順番を変えても同じ答えが出る場合に使われる
+* つまり足し算(+)であれば $s_0 + s_1 + s_2 + s_3$を, 
+$$(((s_0 + s_1) + s_2) + s_3)$$
+と計算しても良いし 
+$$(s_0 + s_1) + (s_2 + s_3)$$
+と計算しても良い. 
+* 見ての通り後者のように計算すれば $(s_0 + s_1)$ と $(s_2 + s_3)$ を並行に計算できることになる
+* したがって reduction は, 結合則と交換則が成り立つような演算を多数の要素に施す場合に使え, 代表例としては, +, *, max, min, などがある
+
+<!--- end md --->
+  
+
+
