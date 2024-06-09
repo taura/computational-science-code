@@ -417,7 +417,7 @@ OMP_NUM_THREADS=1 ./omp_speedup_mp.exe 72 $((100 * 1000 * 1000))
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-for x in 1 2 3 4 6 8 12 16 20 24 28 32; do
+for x in 1 2 3 4 6 8 9 12 18 24 36; do
     echo -n "$x "
     OMP_NUM_THREADS=${x} OMP_PROC_BIND=true ./omp_speedup_mp.exe 72 $((100 * 1000 * 1000)) | grep GFLOPS
 done
