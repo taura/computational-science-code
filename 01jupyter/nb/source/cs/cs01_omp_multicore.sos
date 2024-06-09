@@ -85,7 +85,7 @@ nvc -fast -mp=multicore omp_parallel.c -o omp_parallel_mp.exe
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=3 ./omp_parallel
+OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 <!--- end code --->
 
 <!--- md --->
@@ -117,7 +117,7 @@ OMP_NUM_THREADS=3 ./omp_parallel
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-./omp_parallel_num_threads 3
+./omp_parallel_num_threads_mp.exe 3
 <!--- end code --->
 
 
@@ -144,7 +144,7 @@ nproc
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-./omp_parallel
+./omp_parallel_mp.exe
 <!--- end code --->
 
 <!--- md --->
@@ -184,11 +184,11 @@ nvc -fast -mp=multicore omp_parallel_rank.c -o omp_parallel_rank_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=3 ./omp_parallel_rank
+OMP_NUM_THREADS=3 ./omp_parallel_rank_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-./omp_parallel_rank
+./omp_parallel_rank_mp.exe
 <!--- end code --->
 
 
@@ -255,7 +255,7 @@ nvc -fast -mp=multicore omp_parallel_for.c -o omp_parallel_for_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=3 ./omp_parallel_for 10
+OMP_NUM_THREADS=3 ./omp_parallel_for_mp.exe 10
 <!--- end code --->
 
 <!--- md --->
@@ -303,7 +303,7 @@ nvc -fast -mp=multicore omp_parallel_for_thread_num.c -o omp_parallel_for_thread
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num 10
+OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num_mp.exe 10
 <!--- end code --->
 
 <!--- md --->
@@ -311,7 +311,7 @@ OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num 10
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=2 OMP_SCHEDULE=static ./omp_parallel_for_thread_num 10
+OMP_NUM_THREADS=2 OMP_SCHEDULE=static ./omp_parallel_for_thread_num_mp.exe 10
 <!--- end code --->
 
 <!--- md --->
