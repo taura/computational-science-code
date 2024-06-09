@@ -42,7 +42,14 @@
 * コンパイルオプション:
   * `-mp=multicore` をつけると CPU用のOpenMPがサポートされる
   * `-mp=gpu` をつけると GPU用のOpenMPがサポートされる (次週)
+* 上記のコマンドを実行できるようにするために, 以下を実行してください(この環境特有. Wisteriaでは別のやり方(moduleコマンド))
+<!--- end md --->
 
+<!--- code --->
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.5/compilers/bin:$PATH
+<!--- end code --->
+
+<!--- md --->
 ## GCC
 
 * コマンド名:
@@ -50,14 +57,6 @@
   * C++: `g++`
 * コンパイルオプション:
   * `-fopenmp` をつけると CPU用のOpenMPがサポートされる
-
-## Clang
-
-* コマンド名:
-  * C: `clang`
-  * C++: `clang++`
-* コンパイルオプション:
-  * `-openmp` をつけると CPU用のOpenMPがサポートされる
 
 <!--- end md ---> 
 
@@ -68,20 +67,25 @@
 * OpenMPプログラムは1スレッドで実行を開始し(MPIのようにmain関数が複数実行されるのではない), `#pragma omp parallel`に差し掛かると直後に書かれた文を複数のスレッドが実行する
 * いくつできるかの規則や制御方法にはいくつかあるが, もっとも基本的なルールは, 実行時の環境変数OMP_NUM_THREADSで指定した数, というもの
 
-* 以下を実行すると, `#pragma omp parallel`の直下に書かれた文 printf("world\n") が複数のスレッドによって実行される
+* 以下を実行すると, `#pragma omp parallel`の直下に書かれた一文 `printf("in parallel\n");` が複数のスレッドによって実行される
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_hello.c
-<!--- include nb/source/cs/include/omp_hello.c --->
+%%writefile omp_parallel.c
+<!--- include nb/source/cs/include/omp_parallel.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp omp_hello.c -o omp_hello
+nvc -fast -mp=multicore omp_parallel.c -o omp_parallel_mp.exe
 <!--- end code --->
 
+<!--- md --->
+* `OMP_NUM_THREADS` という環境変数 (「環境変数」を知らない人は以下のようにコマンドの前にある`変数名=値`のことだと思えば良い) を設定すると, `printf("in parallel\n");` (`#pragma omp parallel` 直下の文) を実行するスレッドの数を変えられる
+* 以下で`OMP_NUM_THREADS`に設定する値を色々変えて実行してみよ
+<!--- end md --->
+
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=3 ./omp_hello
+OMP_NUM_THREADS=3 ./omp_parallel
 <!--- end code --->
 
 <!--- md --->
@@ -92,13 +96,59 @@ OMP_NUM_THREADS=3 ./omp_hello
 文
 ```
 * 意味
- * 「文」を複数のスレッドで実行する(典型的には OMP_NUM_THREADS で指定した数)
+ * 「文」を複数のスレッドで実行する(典型的には環境変数 `OMP_NUM_THREADS` で指定した数)
   * それらのスレッドを, その文を実行する<font color="blue">チーム</font>と呼ぶ
  * チームの全スレッドが「文」を実行し終えると, `#pragma omp parallel` 全体が実行を終える
  * 再び1スレッドに戻って以降の文を実行する
 * 注
  * 複数のスレッドが実行するのは `#pragma omp parallel` の直下に書かれたひとつの文だが, この文自体が複合文 (`{ ... }` で囲まれた複数の文をまとめて一つの文とみなしたもの)だったり, ループだったり, 関数呼び出しを含んで, その関数の中に多数の文を含んでいることがあるので, 実際には複数スレッドで実行される文の数はいくらでも多数であり得る
 
+<!--- end md --->
+
+
+<!--- md --->
+# `#pragma omp parallel` を実行するスレッド数の指定の仕方色々
+
+* プログラムの中で指定する
+  * `#pragma omp parallel` に `num_threads(N)` として `N` 個のスレッドで実行するよう指定できる
+  * `N` はCの式でよいのでこれをプログラムの引数で指定したり, プログラム中のデータに応じて調節したりということもやろうと思えばできる
+  * ここで指定したものは環境変数 `OMP_NUM_THREADS` による指定よりも優先される
+* 以下のプログラムの引数を変えてk実行してみよ
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+./omp_parallel_num_threads 3
+<!--- end code --->
+
+
+<!--- md --->
+* 環境変数 `OMP_NUM_THREADS` で指定する (推奨)
+  * 上述したとおり
+  * 手軽にスレッド数を変更できるので多くの場合はこれを用いる
+  * 一般に, プログラムはスレッド数がいくつであっても実行するように書いておき, 実行するときに調節できるようにするのが良いので, その意味でも特に理由がなければこれを使うことを推奨
+<!--- end md --->
+
+<!--- md --->
+* 指定しない
+  * どちらも指定しなければ (仕様にそう書かれているかは知らないが普通), 環境に備わる仮想コア数を `OMP_NUM_THREADS` に指定したのと同じ効果になる
+  * 「仮想コア」については後述
+  * 以下のコマンドでそれを知れる
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+nproc
+<!--- end code --->
+
+<!--- md --->
+* `omp_parallel` を `OMP_NUM_THREADS` 指定せずに実行してみよ
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+./omp_parallel
+<!--- end code --->
+
+<!--- md --->
+* `OMP_NUM_THREADS` には自由な数を指定してよいが, CPUに搭載されている仮想コア数より大きくしても計算が速くなることはまずない
 <!--- end md --->
 
 <!--- md ---> 
@@ -110,55 +160,37 @@ OMP_NUM_THREADS=3 ./omp_hello
   S
 ```
 によってSを実行中のスレッドは, 
- * omp_num_threads() によってSを実行しているチームのスレッド数
- * omp_thread_num() によってその中での自分の番号(スレッド数を$n$として, 0以上$n$未満の数)
+ * `omp_num_threads()` によってSを実行しているチームのスレッド数
+ * `omp_thread_num()` によってその中での自分の番号(スレッド数を$n$として, 0以上$n$未満の数)
 を得ることが出来る
 
 * これらを使う場合
 
-<pre>
+```
 #include <omp.h>
-</pre>
+```
 
 しておく
 
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_hello_rank.c
-<!--- include nb/source/cs/include/omp_hello_rank.c --->
+%%writefile omp_parallel_rank.c
+<!--- include nb/source/cs/include/omp_parallel_rank.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp omp_hello_rank.c -o omp_hello_rank
-<!--- end code --->
-
-<!--- md --->
-
- * OMP_NUM_THREADSには自由な数を指定してよいが, CPUに搭載されているプロセッサ数(物理コア数や仮想コア(ハードウェアスレッド)数, 詳細は後述)よりも大きくしてもまず意味はない
- * OMP_NUM_THREADSに何も指定しなければ自動的にハードウェアスレッド数のスレッドが使われる
- * 以下ではこのページがホストされているクラウド環境のハードウェアスレッド数がわかる
-
-<!--- end md --->
-
-<!--- code w kernel=bash --->
-OMP_NUM_THREADS=3 ./omp_hello_rank
+nvc -fast -mp=multicore omp_parallel_rank.c -o omp_parallel_rank_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-./omp_hello_rank
+OMP_NUM_THREADS=3 ./omp_parallel_rank
 <!--- end code --->
 
-
-<!--- md --->
-
-* この環境のCPU
-
-<!--- end md --->
-
-<!--- code kernel=bash --->
-cat /proc/cpuinfo | head -30
+<!--- code w kernel=bash --->
+./omp_parallel_rank
 <!--- end code --->
+
 
 <!--- md --->
 
@@ -175,6 +207,14 @@ cat /proc/cpuinfo | head -30
 
 <!--- code w kernel=bash --->
 nproc
+<!--- end code --->
+
+<!--- md --->
+* CPUの機種名は以下で観測できる
+<!--- end md --->
+
+<!--- code kernel=bash --->
+cat /proc/cpuinfo | head -30
 <!--- end code --->
 
 <!--- md --->
@@ -202,90 +242,133 @@ nproc
 
 <!--- md --->
 
-* 以下は簡単な例題として行列 x ベクトルを並列化したもの
-* 
+* 以下は `#pragma omp for` の効果を確かめる簡単な例
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_parallel_for.c
+<!--- include nb/source/cs/include/omp_parallel_for.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+nvc -fast -mp=multicore omp_parallel_for.c -o omp_parallel_for_mp.exe
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=3 ./omp_parallel_for 10
+<!--- end code --->
+
+<!--- md --->
+* `m`回の繰り返しが複数のスレッドで分割されて実行されるため, 表示される順番が i の小さい順番とは限らなくなることに注意
+
+* また, `#pragma omp for` を取り除くと, ループのすべての繰り返しがすべてのスレッドで実行されることに注意 (やってみよ)
+* 普通はこんなプログラムは書かないが, 仕様を理解するための実験としてやってみよ
+
+* OpenMPがやってくれることは基本的には for文の繰り返しを複数のスレッドで分割して実行するということである
+* 逆に言うと, 計算時間の多くを並列に実行可能なfor文が占めていることが, OpenMPによる並列化が成功するための条件である
+
+<!--- end md --->
+
+<!--- md --->
+
+# `schedule` 句
+
+* `#pragma omp for` では, 繰り返しをどのようにスレッドに割り当てるかを, `schedule` 句によって指定できる
+* 繰り返し回数が$M$回, スレッド数が$T$個としたときに, 
+  * `#pragma omp for schedule(static)` : はじめの$\lceil M/T \rceil$回をスレッド0, 次の$\lceil M/T \rceil$回をスレッド1, ... が実行 ($M$が$T$で割り切れなければ最後の方に少ないスレッドが出る場合も有る)
+  * `#pragma omp for schedule(static, c)` : はじめの$c$回をスレッド0, 次の$c$回をスレッド1, ... が実行 (最後まで到達したらまたスレッド0に戻る)
+  * `#pragma omp for schedule(dynamic)` : 各スレッドが, 「まだ実行されていない繰り返しを1つ実行する」を繰り返す. どの繰り返しをどのスレッドが実行することになるかは予測できない. 
+  * `#pragma omp for schedule(dynamic, c)` : `dynamic`と同じだが, 繰り返しは一度につき$c$個ずつまとめてわりあてる. つまり「まだ実行されていない繰り返しを$c$個 (残った繰り返し数が$c$未満の場合はすべて) 実行する」を繰り返す. 
+  * `#pragma omp for schedule(guided)` : `dynamic`と似ているが最初のうちは一度につき, 多めの繰り返しを割当て, 徐々に少なくしていく
+  * `#pragma omp for schedule(guided, c)` : `guided`と似ているが最低でも$c$個割り当てる
+  * `#pragma omp for schedule(runtime)` : 実行する際に環境変数 `OMP_SCHEDULE` で, 以下のようにschedule句を指定できる.
 ```
-#pragma omp for
-  for (long i = 0; i < n; i++) ...
-```
-によって, $n$回の繰り返しがスレッド間に別けて実行される
-* どのように分けられるかは schedule 句によって指定できる(後述)
+OMP_SCHEDULE=static コマンド
+```  
+* 何も書かなかった時のデフォルトが仕様で定められているかどうかは知らないが, 普通は初めの`static`の動作をする
+
+* 以下のプログラムは, 各繰り返しを`usleep(i * 100000)`によって約$i \times 100$ミリ秒 ($=i \times 0.1) 秒かかるようにした上で, どの繰り返しをどのスレッドが実行したかを表示するもの
+* `schedule`句を書き換えてコンパイル, 実行し, 上記を確認せよ
+* どのようなときに`static` / `dynamic` を用いるべきか?
 
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_mat_vec.c
-<!--- include nb/source/cs/include/omp_mat_vec.c --->
+%%writefile omp_parallel_for_thread_num.c
+<!--- include nb/source/cs/include/omp_parallel_for_thread_num.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp -march=native omp_mat_vec.c -o omp_mat_vec
+nvc -fast -mp=multicore omp_parallel_for_thread_num.c -o omp_parallel_for_thread_num_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=1 ./omp_mat_vec
+OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num 10
 <!--- end code --->
 
+<!--- md --->
+* 何度も書き換えてコンパイルするのが面倒になったら`schedule(runtime)` を使って, `OMP_SCHEDULE`をコマンドラインで指定するのが吉
+<!--- end md --->
+
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=4 ./omp_mat_vec
+OMP_NUM_THREADS=2 OMP_SCHEDULE=static ./omp_parallel_for_thread_num 10
 <!--- end code --->
 
 <!--- md --->
 
-* なお #pragma omp parallel の直後に #pragma omp for が来る場合両者をひとつの pragma で書ける
+# 台数効果の目撃
 
+* $T$個のスレッドを用いても速度が$T$倍(近く)にならないことはしばしば
+* そもそも$T > $コア数のときは複数のスレッドが同じコア上で動くことになり, コア数以降の向上は望めない(上のプログラムのようにスレッドがわざと(usleepで)休眠していたり, ファイルのIOなどで長時間止まっている場合は別)
+* OpenMPをそのような設定で使うことはあまりない
+* $T \leq $コア数であっても, 速度が$T$倍 (実行時間が$1/T$倍) とは程遠くなる理由がいくつも有る
+  1. 1つのスレッドによって実行される処理が小さすぎる場合 ($T$個スレッドが実行を開始して, 全員が終了するのを待つ, というオーバーヘッドが目立つ)
+  1. OSが速やかに$T$個のスレッドを別々のコアに割り当ててくれないことがある
+  1. スレッド間でデータを共有している場合にデータアクセスのコストが1スレッドの場合に比べて大きくなる(詳細は計算機の仕組みに関わるのでここでは深入りしない)
+* 3番目の問題はアルゴリズムの本質に関わる現象で容易に除去できない場合が多いが,
+  * 1についてはそういうものだと思っておく(あまり短すぎる処理を複数コアで性能向上はできない. あまりそうする意味もないのでやる必要もない)
+  * 2については, 実行時に`OMP_PROC_BIND=true` と環境変数を設定することで改善することがある. これは各スレッドを特定のコアでしか実行しないようにOSに指示するという効果があるため, 2の問題を緩和できる
+
+* 以下では, 計算自身にあまり意味はないが簡単な例題で性能向上を目撃してみる
+* なお `#pragma omp parallel for` は `#pragma omp parallel` の直後に `#pragma omp for` を書いたのと同じ効果を持つ
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_mat_vec_parallel_for.c
-<!--- include nb/source/cs/include/omp_mat_vec_parallel_for.c --->
+%%writefile omp_speedup.c
+<!--- include nb/source/cs/include/omp_speedup.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp -march=native omp_mat_vec_parallel_for.c -o omp_mat_vec_parallel_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-OMP_NUM_THREADS=1 ./omp_mat_vec_parallel_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-OMP_NUM_THREADS=4 ./omp_mat_vec_parallel_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-./omp_mat_vec_parallel_for
+nvc -fast -mp=multicore omp_speedup.c -o omp_speedup_mp.exe
 <!--- end code --->
 
 <!--- md --->
+* 以下は, $m = 72$, $n = 100 \times 1000 \times 1000$として実行する
+* スレッド数を変えて, 仮想コア数付近までの性能向上 (GFLOPS値の向上), それ以降の頭打ちを確認せよ
+<!--- end md --->
 
-* 同じプログラムを `#pragma omp for` を用いずに, (手動で)繰り返しを分割して実行することも出来る
-* そのためには omp_get_num_threads() と omp_get_thread_num() を用いてどの繰り返しをどのスレッドが実行するかを決めてやれば良い
-* もちろんこの例においてわざわざそんなことをする意味はないが説明のために記す
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 ./omp_speedup_mp.exe 72 $((100 * 1000 * 1000))
+<!--- end code --->
 
+<!--- md --->
+* 手動でやるのが嫌になったら以下で一撃で実行
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+for x in 1 2 3 4 6 8 12 16 20 24 28 32; do
+    echo -n "$x "
+    OMP_NUM_THREADS=${x} OMP_PROC_BIND=true ./omp_speedup_mp.exe 72 $((100 * 1000 * 1000)) | grep GFLOPS
+done
+<!--- end code --->
+
+<!--- md --->
+* 結果を以下で可視化 (上の結果をコピペせよ)
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_mat_vec_wo_for.c
-<!--- include nb/source/cs/include/omp_mat_vec_wo_for.c --->
+<!--- include nb/source/cs/include/speedup.py --->
 <!--- end code --->
-
-<!--- code w kernel=bash --->
-gcc -O3 -fopenmp -march=native omp_mat_vec_wo_for.c -o omp_mat_vec_wo_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-OMP_NUM_THREADS=1 ./omp_mat_vec_wo_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-OMP_NUM_THREADS=4 ./omp_mat_vec_wo_for
-<!--- end code --->
-
-<!--- code w kernel=bash --->
-./omp_mat_vec_wo_for
-<!--- end code --->
-
 
 <!--- md ---> 
 
@@ -295,17 +378,19 @@ OMP_NUM_THREADS=4 ./omp_mat_vec_wo_for
 * 「共有」しているとは, 大雑把にいえば, どのスレッドが変数に書き込んだ値も, 他のスレッドに見えるということである
 * そのことはこれまでの例題プログラムでも暗黙的に前提としていたことで, 例えば以下で, 
 ```
-  init_mat(n, (float(*)[n])A, 1);
-  init_vec(n, x, 1);
-  long long t0 = _rdtsc();
-  for (long r = 0; r < repeat; r++) {
-    mat_vec(n, (float(*)[n])A, x, y);
+#pragma omp parallel for
+  for (long i = 0; i < m; i++) {
+    x[i] = lin_rec(0.99, i + 1, 1.0, n);
   }
-  long long t1 = _rdtsc();
-  printf("%lld clocks\n", t1 - t0);
-  check_vec(n, y, n);
+  /* 計測終了 */
+  double t1 = omp_get_wtime();
+  double dt = t1 - t0;          /* sec */
+  /* 答え表示 (x[i] = 100 * (i + 1) くらいのはず) */
+  for (long i = 0; i < m; i++) {
+    printf("x[%3ld] = %9.3f\n", i, x[i]);
+  }
 ```
-init_matやinit_vecでAやxに書き込んだ値が, mat_vecを実行している各スレッドで読めるのも, スレッドがデータを共有しているからである. また, 各スレッドがyに書き込んだ値が, check_vecの中で正しく読めるのみ同じ理由による
+各スレッドが`x[i]`に書き込んだ値が「答え表示」で表示できるのも, スレッドがデータを共有しているからである
 
 * データが共有されているということは便利でもある一方で実は気をつけなくてはいけないことがある
 * 以下では, データが共有されていることで生ずる問題<font color="red">競合状態</font>とその解消法について説明する
@@ -316,18 +401,17 @@ init_matやinit_vecでAやxに書き込んだ値が, mat_vecを実行してい�
 
 # 競合状態
 
-* いつぞや取り上げた以下のコードをOpenMPで並列化することを考える
-* (説明の都合上ほんの少し変更している)
+* 以下のコードをOpenMPで並列化することを考える
 
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile int_inv_1_x2_x.c
-<!--- include nb/source/cs/include/int_inv_1_x2_x.c --->
+%%writefile integral.c
+<!--- include nb/source/cs/include/integral.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -march=native int_inv_1_x2_x.c -o int_inv_1_x2_x
+nvc -fast -mp=multicore integral.c -o integral_mp.exe
 <!--- end code --->
 
 <!--- md ---> 
@@ -337,12 +421,12 @@ gcc -O3 -march=native int_inv_1_x2_x.c -o int_inv_1_x2_x
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_int_inv_1_x2_race.c
-<!--- include nb/source/cs/include/omp_int_inv_1_x2_race.c --->
+%%writefile omp_integral_racy.c
+<!--- include nb/source/cs/include/omp_integral_racy.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp -march=native omp_int_inv_1_x2_race.c -o omp_int_inv_1_x2_race
+nvc -fast -mp=multicore omp_integral_racy.c -o omp_integral_racy_mp.exe
 <!--- end code --->
 
 <!--- md --->
@@ -352,7 +436,7 @@ gcc -O3 -fopenmp -march=native omp_int_inv_1_x2_race.c -o omp_int_inv_1_x2_race
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=1 time ./omp_int_inv_1_x2_race
+OMP_NUM_THREADS=1 time ./omp_integral_racy_mp.exe
 <!--- end code --->
 
 <!--- md --->
@@ -362,12 +446,12 @@ OMP_NUM_THREADS=1 time ./omp_int_inv_1_x2_race
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=4 time ./omp_int_inv_1_x2_race
+OMP_NUM_THREADS=4 time ./omp_integral_racy_mp.exe
 <!--- end code --->
 
 <!--- md --->
 
-* その理由を考察する(講義スライド p80 〜に答えがある)
+* その理由を考察する(講義スライド pXX 〜に答えがある)
 
 <pre>
 #pragma omp parallel for
@@ -377,9 +461,9 @@ OMP_NUM_THREADS=4 time ./omp_int_inv_1_x2_race
   }
 </pre>
 
-において, 変数 sは全部のスレッドで共有されている(注: x は parallel で実行される文の内部で定義されており, それはスレッドごとに別の変数になる. つまり共有されない)
-* 複数のスレッドが同じ変数sを更新することになる
-* よくないことが起きる具体的なシナリオはスライドp81 を参照. s += ... は実際には, s を読み出し, .... を足して, それをまたsに書き戻す. 読み出しから書き戻しまでの間に別のスレッドが s を更新するとおかしなことになる
+において, 変数 sは全部のスレッドで共有されている(注: `x` は `#pragma omp parallel` で実行される文の内部で定義されており, そのような変数はスレッドごとに別の変数になる. つまり共有されない)
+* 複数のスレッドが同じ変数`s`を更新することになる
+* よくないことが起きる具体的なシナリオはスライドpXX を参照. `s += ...` は実際には, `s` を読み出し, `...` を足して, それをまた`s`に書き戻す. 読み出しから書き戻しまでの間に別のスレッドが `s` を更新するとおかしなことになる
 
 <!--- end md --->
 
@@ -394,22 +478,22 @@ OMP_NUM_THREADS=4 time ./omp_int_inv_1_x2_race
 
 ## reduction 節を用いた解決法
 
-* 今回の変数 s に対する足し込みのような演算(もう少し一般的な話は後で述べる)に対してはとりわけ簡単な解決法
-* `#omp pragma parallel` もしくは `#omp pragma for` の中に reduction(演算:変数) という節を付け加えれば良い
+* 今回の変数 `s` に対する足し込みのような演算(もう少し一般的な話は後で述べる)に対してはとりわけ簡単な解決法
+* `#omp pragma parallel` もしくは `#omp pragma for` の中に `reduction(演算:変数)` という節を付け加えれば良い
 
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_int_inv_1_x2_reduction.c
-<!--- include nb/source/cs/include/omp_int_inv_1_x2_reduction.c  --->
+%%writefile omp_integral_reduction.c
+<!--- include nb/source/cs/include/omp_integral_reduction.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-gcc -O3 -fopenmp -march=native omp_int_inv_1_x2_reduction.c -o omp_int_inv_1_x2_reduction
+nvc -fast -mp=multicore omp_integral_reduction.c -o omp_integral_reduction_mp.exe
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-time ./omp_int_inv_1_x2_reduction
+time ./omp_integral_reduction_mp.exe
 <!--- end code --->
 
 <!--- md ---> 
@@ -423,7 +507,18 @@ $$(s_0 + s_1) + (s_2 + s_3)$$
 * 見ての通り後者のように計算すれば $(s_0 + s_1)$ と $(s_2 + s_3)$ を並行に計算できることになる
 * したがって reduction は, 結合則と交換則が成り立つような演算を多数の要素に施す場合に使え, 代表例としては, +, *, max, min, などがある
 
+* ただし実は, 浮動小数点数(`double`, `float`など)の足し算には丸め誤差が生ずる
+* そのため浮動小数点数を多数足し合わせる場合, その順番により結果が変わりうる
+* `reduction`を使った場合, 1スレッドの実行と答えがずれる, スレッド数によって答えが少し変わるということは普通に生ずる
+
 <!--- end md --->
   
+<!--- md --->
 
+# 終わりに一言
 
+* これでOpenMPを用いて, マルチコア(複数のコアを使った)並列処理ができるようになった
+* ただしこれだけでCPUの性能をどのくらい引き出せるかと言うと, 本来性能には程遠い
+* その理由は主にSIMD命令を用いていないこと, 命令間の依存関係によって, 命令レベル並列を引き出せていないこと, である
+
+<!--- end md --->

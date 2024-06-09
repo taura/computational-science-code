@@ -4,7 +4,6 @@
 double int_inv_1_x2(double a, double b, long n) {
   double s = 0.0;
   double dx = (b - a) / (double)n;
-#pragma omp parallel for
   for (long i = 0; i < n; i++) {
     double x = a + i * dx;
     s += 1 / (1 + x * x);
