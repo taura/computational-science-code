@@ -8,8 +8,8 @@ all : $(mp_targets) # $(gpu_targets)
 
 # 
 $(mp_targets) : %_mp.exe : %.c
-#	gcc $(CFLAGS) -o $@ $<
-	nvc -fast -mp=multicore $< -o $@
+	gcc $(CFLAGS) -o $@ $<
+#	nvc -fast -mp=multicore $< -o $@
 
 $(gpu_targets) : %_gpu.exe : %.c
 	nvc -o $@ -mp=gpu $<

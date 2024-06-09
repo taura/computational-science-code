@@ -24,6 +24,7 @@ int main(int argc, char ** argv) {
   printf("m = %ld, n = %ld\n", m, n);
   /* 計測開始 */
   double t0 = omp_get_wtime();
+  /* 計算本体 */
 #pragma omp parallel for
   for (long i = 0; i < m; i++) {
     x[i] = lin_rec(0.99, i + 1, 1.0, n);

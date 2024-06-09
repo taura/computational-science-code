@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <x86intrin.h>
 
-float mat_vec(long n, float A[n][n], float x[n], float y[n]) {
+void mat_vec(long n, float A[n][n], float x[n], float y[n]) {
 #pragma omp parallel
 #pragma omp for
   for (long i = 0; i < n; i++) {
@@ -33,7 +33,7 @@ void init_vec(long n, float x[n], float v) {
 
 void check_vec(long n, float x[n], long v) {
   for (long k = 0; k < n; k++) {
-    assert(x[k] == n);
+    assert(x[k] == v);
   }
 }
 

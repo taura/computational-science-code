@@ -72,7 +72,7 @@ export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.5/compilers/bin:$PATH
 
 <!--- code w kernel=python --->
 %%writefile omp_parallel.c
-<!--- include nb/source/cs/include/omp_parallel.c --->
+<!--- include nb/source/cs01/include/omp_parallel.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -118,10 +118,10 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 
 <!--- code w kernel=python --->
 %%writefile omp_parallel_num_threads.c
-<!--- include nb/source/cs/include/omp_parallel_num_threads.c --->
+<!--- include nb/source/cs01/include/omp_parallel_num_threads.c --->
 <!--- end code --->
 
-<!--- code w kernel=python --->
+<!--- code w kernel=bash --->
 nvc -fast -mp=multicore omp_parallel_num_threads.c -o omp_parallel_num_threads_mp.exe
 <!--- end code --->
 
@@ -185,7 +185,7 @@ nproc
 
 <!--- code w kernel=python --->
 %%writefile omp_parallel_rank.c
-<!--- include nb/source/cs/include/omp_parallel_rank.c --->
+<!--- include nb/source/cs01/include/omp_parallel_rank.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -256,7 +256,7 @@ cat /proc/cpuinfo | head -30
 
 <!--- code w kernel=python --->
 %%writefile omp_parallel_for.c
-<!--- include nb/source/cs/include/omp_parallel_for.c --->
+<!--- include nb/source/cs01/include/omp_parallel_for.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -277,6 +277,31 @@ OMP_NUM_THREADS=3 ./omp_parallel_for_mp.exe 10
 * 逆に言うと, 計算時間の多くを並列に実行可能なfor文が占めていることが, OpenMPによる並列化が成功するための条件である
 
 <!--- end md --->
+
+<!--- md ---> 
+
+## `#pragma omp for` で実行できるfor文の制限
+
+* 任意のfor文を並列実行できるわけではない
+* 例えば break 文があるような, 途中で, 以降の繰り返しがすべて実行しないかもしれないようなfor文は並列実行できない(コンパイル時に文句を言われる)
+* 大雑把には, 
+```
+#pragma omp for
+for (変数 = 式1; 変数 < 式2; 変数 += 式3) {
+  ...
+}
+```
+の形をしており,
+  * 式1, 式2, 式3はすべて, `#pragma omp for` に差し掛かった時点で値が確定し, ループ実行中に変化することがない
+  * ... の途中でfor文を抜け出す文(break, returnなど)が存在しない
+というもの
+* 実際は `<` は `<=`, `>`, `>=` などでもよく, `+=` は `-=`, `++`, `--` でもよいなど細かい点で上記よりも柔軟
+* 性質としては
+  * for文に差し掛かった時点でループの繰り返し回数が判明する
+  * 何回目の繰り返しで「変数」の値がいくらになるかが容易に計算可能(i 回目の繰り返しにおいて「変数 = 式1 + i * 式3」)
+ということで, これによりスレッドに繰り返しを分割するのが容易になる
+<!--- end md --->
+
 
 <!--- md --->
 
@@ -304,7 +329,7 @@ OMP_SCHEDULE=static コマンド
 
 <!--- code w kernel=python --->
 %%writefile omp_parallel_for_thread_num.c
-<!--- include nb/source/cs/include/omp_parallel_for_thread_num.c --->
+<!--- include nb/source/cs01/include/omp_parallel_for_thread_num.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -312,7 +337,7 @@ nvc -fast -mp=multicore omp_parallel_for_thread_num.c -o omp_parallel_for_thread
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num_mp.exe 10
+OMP_NUM_THREADS=2 time ./omp_parallel_for_thread_num_mp.exe 10
 <!--- end code --->
 
 <!--- md --->
@@ -320,23 +345,50 @@ OMP_NUM_THREADS=2 ./omp_parallel_for_thread_num_mp.exe 10
 <!--- end md --->
 
 <!--- code w kernel=bash --->
-OMP_NUM_THREADS=2 OMP_SCHEDULE=static ./omp_parallel_for_thread_num_mp.exe 10
+OMP_NUM_THREADS=2 OMP_SCHEDULE=static time ./omp_parallel_for_thread_num_mp.exe 10
 <!--- end code --->
+
+<!--- md --->
+
+# `collapse` 句
+
+* `#pragma omp for` は通常, その直下に書かれたfor文のみを並列(スレッド間で分割)実行の対象にする
+* しかし, 並列化したいのが多重のfor文の入れ子(多重ループ)であることも多く, かつ当然ながらそういうfor文の方が計算量が多い傾向にある
+* `#pragma omp for collapse(2)` のようにすることで直下に書かれた2重のfor文全体を並列実行の対象にできる (3重, 4重, ... も同様)
+* 対象となるすべてのfor文に, 上記 (`#pragma omp for` で実行できるfor文の制限) で述べた制限がかかる
+
+* 以下のプログラムのcollapseありとなしの結果を観察せよ
+<!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_parallel_for_thread_num.c
+<!--- include nb/source/cs01/include/omp_parallel_for_collapse.c --->
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+nvc -fast -mp=multicore omp_parallel_for_collapse.c -o omp_parallel_for_collapse_mp.exe
+<!--- end code --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=16 time ./omp_parallel_for_collapse_mp.exe 4
+<!--- end code --->
+
+
 
 <!--- md --->
 
 # 台数効果の目撃
 
-* $T$個のスレッドを用いても速度が$T$倍(近く)にならないことはしばしば
+* $T$個のスレッドを用いても速度が$T$倍(近く)にならないことはしばしば(「ほとんど」というべきか)
 * そもそも$T > $コア数のときは複数のスレッドが同じコア上で動くことになり, コア数以降の向上は望めない(上のプログラムのようにスレッドがわざと(usleepで)休眠していたり, ファイルのIOなどで長時間止まっている場合は別)
-* OpenMPをそのような設定で使うことはあまりない
+* したがってOpenMPをそのような設定で使うことはあまりない
 * $T \leq $コア数であっても, 速度が$T$倍 (実行時間が$1/T$倍) とは程遠くなる理由がいくつも有る
-  1. 1つのスレッドによって実行される処理が小さすぎる場合 ($T$個スレッドが実行を開始して, 全員が終了するのを待つ, というオーバーヘッドが目立つ)
-  1. OSが速やかに$T$個のスレッドを別々のコアに割り当ててくれないことがある
+  1. 1つのスレッドによって実行される処理が小さすぎる ($T$個スレッドが実行を開始して, 全員が終了するのを待つ, というオーバーヘッドが目立つ)
+  1. OSが速やかに$T$個のスレッドを別々のコアに割り当ててくれない
   1. スレッド間でデータを共有している場合にデータアクセスのコストが1スレッドの場合に比べて大きくなる(詳細は計算機の仕組みに関わるのでここでは深入りしない)
-* 3番目の問題はアルゴリズムの本質に関わる現象で容易に除去できない場合が多いが,
+* 3番目はアルゴリズムの本質に根ざした問題で容易に除去できない場合が多いが,
   * 1についてはそういうものだと思っておく(あまり短すぎる処理を複数コアで性能向上はできない. あまりそうする意味もないのでやる必要もない)
-  * 2については, 実行時に`OMP_PROC_BIND=true` と環境変数を設定することで改善することがある. これは各スレッドを特定のコアでしか実行しないようにOSに指示するという効果があるため, 2の問題を緩和できる
+  * 2については, 実行時に`OMP_PROC_BIND=true` と環境変数を設定することで改善することがある. `OMP_PROC_BIND=true` は, 各スレッドを特定のコアでしか実行しない, かつそれらが均等になるという効果を持つ指示で, 2の問題を緩和できる. 説明: https://www.openmp.org/spec-html/5.0/openmpse52.html 
 
 * 以下では, 計算自身にあまり意味はないが簡単な例題で性能向上を目撃してみる
 * なお `#pragma omp parallel for` は `#pragma omp parallel` の直後に `#pragma omp for` を書いたのと同じ効果を持つ
@@ -344,7 +396,7 @@ OMP_NUM_THREADS=2 OMP_SCHEDULE=static ./omp_parallel_for_thread_num_mp.exe 10
 
 <!--- code w kernel=python --->
 %%writefile omp_speedup.c
-<!--- include nb/source/cs/include/omp_speedup.c --->
+<!--- include nb/source/cs01/include/omp_speedup.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -376,8 +428,17 @@ done
 <!--- end md --->
 
 <!--- code w kernel=python --->
-<!--- include nb/source/cs/include/speedup.py --->
+<!--- include nb/source/cs01/include/speedup.py --->
 <!--- end code --->
+
+<!--- md --->
+* なおこの実験はいろいろな意味でいい加減な実験だということを注意しておく
+  * 本来は同じ条件で何度も実験して, ばらつきなどを見つつ平均をとるべき
+  * `OMP_PROC_BIND=true` を設定して複数のスレッドが同一コアに割り当たらないようにしているが, 同時に複数の人が実験すると, 同一コアに複数の人のスレッドが割り当てられることがありうるので実行したタイミングの運・不運で結果が変わる
+  * 本来は一回のプログラム中でも同じループを複数回実行して計測するのが正しい
+  * 特に何事も「プログラム中の最初の一回の◯◯」というのは特別な処理が必要になりがちで, 実際OpenMPでも初めて`#pragma omp parallel`に遭遇したときにOSのスレッドが生成され, それ以降は同じスレッドが使い回されるということが通常である(つまり初めての `#pragma omp parallel` はそれ以降より余分なオーバーヘッドがかかりやすい)
+  * など  
+<!--- end md --->
 
 <!--- md ---> 
 
@@ -416,7 +477,7 @@ done
 
 <!--- code w kernel=python --->
 %%writefile integral.c
-<!--- include nb/source/cs/include/integral.c --->
+<!--- include nb/source/cs01/include/integral.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -431,7 +492,7 @@ nvc -fast -mp=multicore integral.c -o integral_mp.exe
 
 <!--- code w kernel=python --->
 %%writefile omp_integral_racy.c
-<!--- include nb/source/cs/include/omp_integral_racy.c --->
+<!--- include nb/source/cs01/include/omp_integral_racy.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->
@@ -494,7 +555,7 @@ OMP_NUM_THREADS=4 time ./omp_integral_racy_mp.exe
 
 <!--- code w kernel=python --->
 %%writefile omp_integral_reduction.c
-<!--- include nb/source/cs/include/omp_integral_reduction.c --->
+<!--- include nb/source/cs01/include/omp_integral_reduction.c --->
 <!--- end code --->
 
 <!--- code w kernel=bash --->

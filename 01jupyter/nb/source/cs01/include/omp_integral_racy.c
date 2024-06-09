@@ -15,7 +15,7 @@ double int_inv_1_x2(double a, double b, long n) {
 int main(int argc, char ** argv) {
   double a = (argc > 1 ? atof(argv[1]) : 0.0);
   double b = (argc > 2 ? atof(argv[2]) : 1.0);
-  long n   = (argc > 3 ? atof(argv[3]) : 1000L * 1000L * 1000L);
+  long n   = (argc > 3 ? atol(argv[3]) : 1000L * 1000L * 1000L);
   double s = int_inv_1_x2(a, b, n);
   printf("s = %f\n", s);
   return 0;
