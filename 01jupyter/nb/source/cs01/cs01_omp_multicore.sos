@@ -361,7 +361,7 @@ OMP_NUM_THREADS=2 OMP_SCHEDULE=static time ./omp_parallel_for_thread_num_mp.exe 
 <!--- end md --->
 
 <!--- code w kernel=python --->
-%%writefile omp_parallel_for_thread_num.c
+%%writefile omp_parallel_for_collapse.c
 <!--- include nb/source/cs01/include/omp_parallel_for_collapse.c --->
 <!--- end code --->
 
@@ -484,6 +484,10 @@ done
 nvc -fast -mp=multicore integral.c -o integral_mp.exe
 <!--- end code --->
 
+<!--- code w kernel=bash --->
+./integral_mp.exe
+<!--- end code --->
+
 <!--- md ---> 
 
 * ここにそのまま pragma parallel, pragma for を当てはめると以下のようになる
@@ -563,7 +567,7 @@ nvc -fast -mp=multicore omp_integral_reduction.c -o omp_integral_reduction_mp.ex
 <!--- end code --->
 
 <!--- code w kernel=bash --->
-time ./omp_integral_reduction_mp.exe
+OMP_NUM_THREADS=4 time ./omp_integral_reduction_mp.exe
 <!--- end code --->
 
 <!--- md ---> 
