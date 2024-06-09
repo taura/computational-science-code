@@ -45,7 +45,7 @@
 * 上記のコマンドを実行できるようにするために, 以下を実行してください(この環境特有. Wisteriaでは別のやり方(moduleコマンド))
 <!--- end md --->
 
-<!--- code --->
+<!--- code w kernel=bash --->
 export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.5/compilers/bin:$PATH
 <!--- end code --->
 
