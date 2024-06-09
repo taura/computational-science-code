@@ -113,8 +113,17 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
   * `#pragma omp parallel` に `num_threads(N)` として `N` 個のスレッドで実行するよう指定できる
   * `N` はCの式でよいのでこれをプログラムの引数で指定したり, プログラム中のデータに応じて調節したりということもやろうと思えばできる
   * ここで指定したものは環境変数 `OMP_NUM_THREADS` による指定よりも優先される
-* 以下のプログラムの引数を変えてk実行してみよ
+* 以下のプログラムの引数を変えて実行してみよ
 <!--- end md --->
+
+<!--- code w kernel=python --->
+%%writefile omp_parallel_num_threads.c
+<!--- include nb/source/cs/include/omp_parallel_num_threads.c --->
+<!--- end code --->
+
+<!--- code w kernel=python --->
+nvc -fast -mp=multicore omp_parallel_num_threads.c -o omp_parallel_num_threads_mp.exe
+<!--- end code --->
 
 <!--- code w kernel=bash --->
 ./omp_parallel_num_threads_mp.exe 3
