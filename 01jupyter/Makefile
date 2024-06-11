@@ -29,4 +29,4 @@ ans_aux_srcs :=
 users_csv := users.csv
 
 feedback_class := os
-include ../../../jupyter_tools/authoring/jupyter_tools.mk
+include jupyter_tools.mk
