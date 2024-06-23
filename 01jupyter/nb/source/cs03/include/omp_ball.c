@@ -95,7 +95,7 @@ int main(int argc, char ** argv) {
     fprintf(stderr, "check your program\n");
   }
   printf("volume        : %.9f\n", v);
-  printf("error         : %e\n", );
+  printf("error         : %e\n", error);
   printf("elapsed       : %7.3f\n", dt);
   printf("n^3 / nsec    : %7.3f\n",
          (double)n * (double)n * (double)n / dt * 1.0e-9);
