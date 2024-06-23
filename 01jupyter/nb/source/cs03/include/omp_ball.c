@@ -44,7 +44,7 @@ double volume_of_ball(long n, int nteams, int nthreads) {
       double x = (i + 0.5) * h;
       double y = (j + 0.5) * h;
       for (long k = 0; k < n; k += nl) {
-        doublev z = lin(k + 0.5) * h;
+        doublev z = range(k + 0.5) * h;
         s += count_lt(x * x + y * y + z * z, uniform(1.0));
       }
     }
