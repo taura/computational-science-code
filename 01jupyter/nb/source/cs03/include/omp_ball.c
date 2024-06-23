@@ -19,7 +19,7 @@ doublev uniform(double u) {
   return v;
 }
 
-doublev lin(double u) {
+doublev range(double u) {
   doublev v;
   for (long i = 0; i < nl; i++) {
     v[i] = u + i;

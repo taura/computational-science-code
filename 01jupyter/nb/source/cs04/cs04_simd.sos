@@ -594,6 +594,6 @@ done
 <!--- end md --->
 
 <!--- code w kernel=python --->
-<!--- include nb/source/cs03/include/speedup.py --->
+<!--- include nb/source/cs01/include/speedup.py --->
 <!--- end code --->
 
