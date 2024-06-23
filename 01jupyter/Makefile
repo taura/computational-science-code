@@ -4,7 +4,7 @@
 #mk_nb_flags := --dbg 2
 
 nb_srcs :=
-nb_srcs += $(wildcard nb/source/cs02/*.sos)
+nb_srcs += $(wildcard nb/source/cs0?/*.sos)
 
 aux_srcs :=
 #aux_srcs += $(wildcard nb/source/pl06_*/??/Makefile)

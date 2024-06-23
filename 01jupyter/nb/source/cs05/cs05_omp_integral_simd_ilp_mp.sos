@@ -1,0 +1,70 @@
+<!--- md label=prob,ans --->
+
+#* 高性能プログラミングと性能測定(5) --- 練習問題 (SIMD + ILP + マルチコア)
+
+<!--- end md --->
+
+<!--- md --->
+
+# 1/8球の体積 を求めるプログラム (SIMD + ILP + マルチコア)
+
+<!--- end md --->
+
+<!--- md --->
+
+#*P SIMD, ILP, マルチコア並列化
+
+* cs03で行った1/8球の体積を求めるプログラムを, SIMD, ILP, マルチコアすべてを利用して高速化せよ
+
+<!--- end md --->
+
+<!--- code w kernel=python points=1 --->
+%%writefile omp_ball_simd_ilp_mp.c
+<!--- exec-include ./mk_version.py -D VER=1 nb/source/cs03/include/omp_ball.c --->
+<!--- end code --->
+
+<!--- md --->
+
+* ヒント
+  * このプログラムのベクトル化で一つ厄介なのは, `x * x + y * y + z * z < 1.0` の部分
+  * `A < B` は, 満たされていれば1, なければ0という式
+  * ここで`A, B` がベクトル型だったら `A < B` が 「`A[i] < B[i]`を満たす要素の数」だったりしたら話が早いのだがそうは問屋がおろさず, そもそもそのような演算子 (ベクトル型同士の大小比較) というものが許されていない
+  * したがって, `count_lt(double A, double B)` とでも名付けて, 上記の値を返す関数を自分で作る必要がある
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+nvc -fast -mp=multicore omp_ball_simd_ilp_mp.c -o omp_ball_simd_ilp_mp.exe
+<!--- end code --->
+
+<!--- md --->
+* 以下の`OMP_NUM_THREADS=1` を色々変えて実行してみよ
+* なお,
+  * https://tauleg.zapto.org:8000/ には18の(仮想)コア
+  * https://taulec.zapto.org:8000/ には152の(仮想)コア
+があるので, できれば後者で, 多数のスレッド数でやってみよ  
+<!--- end md --->
+
+<!--- code w kernel=bash --->
+OMP_NUM_THREADS=1 ./omp_ball_mp.exe 512
+<!--- end code --->
+
+<!--- md --->
+* 以下を適切に修正して様々なスレッド数で実行し, 
+<!--- end md --->
+
+<!--- code w kernel=bash points=1 --->
+for th in 1 2 適切にスレッド数を並べよ ; do
+  echo "====="
+  OMP_PROC_BIND=true OMP_NUM_THREADS=${th} ./omp_ball_mp.exe 512
+done
+<!--- end code --->
+
+<!--- md --->
+* 結果を以下にコピペして性能向上を可視化せよ(性能向上がすぐに頭打ちになるようであれば, $n$の値を調節せよ)
+* GPUでの結果と比較せよ
+<!--- end md --->
+
+<!--- code w kernel=python --->
+<!--- include nb/source/cs03/include/speedup.py --->
+<!--- end code --->
+

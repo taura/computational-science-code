@@ -1,15 +1,18 @@
-ccs:=$(wildcard *.cc)
-clang_exes:=$(patsubst %.cc,%.clang,$(ccs))
-nvc_exes:=$(patsubst %.cc,%.nvc,$(ccs))
-targets:=
-targets+=$(clang_exes)
-targets+=$(nvc_exes)
+c_src:=$(wildcard omp_target.c omp_teams.c omp_target_teams.c omp_team_num.c omp_distribute.c omp_target_teams_distribute.c omp_parallel.c omp_distribute_parallel.c omp_for.c omp_map_local.c omp_map_global.c omp_speedup.c)
 
-all : $(targets)
+mp_targets:=$(patsubst %.c,%_mp.exe,$(c_src))
+gpu_targets:=$(patsubst %.c,%_gpu.exe,$(c_src))
+CFLAGS:=-Wall -Wextra -O3 -mfma -fopenmp 
 
-$(clang_exes) : %.clang : %.cc
-	clang++ -o $@ -Wall -Wno-unknown-cuda-version -O3 -fopenmp -fopenmp-targets=nvptx64 $<
+all : $(gpu_targets) $(mp_targets)
 
-$(nvc_exes) : %.nvc : %.cc
-	nvc++ -o $@ -mp -cuda -O1 -target=gpu $<
+# 
+$(mp_targets) : %_mp.exe : %.c
+#	gcc $(CFLAGS) -o $@ $<
+	nvc -fast -mp=multicore $< -o $@
 
+$(gpu_targets) : %_gpu.exe : %.c
+	nvc -fast -mp=gpu -gpu=mem:managed $< -o $@
+
+clean :
+	rm -f *.exe

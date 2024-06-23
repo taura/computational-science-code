@@ -27,7 +27,7 @@ def main():
         x, y = fields[:2]
         X.append(float(x))
         Y.append(float(y))
-        L.append(Y[0] * float(x))
+        L.append(Y[0] / X[0] * float(x))
     plt.ylabel("GFLOPS")
     plt.xlabel("num_threads")
     plt.plot(X, L)
