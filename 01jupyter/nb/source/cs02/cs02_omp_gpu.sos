@@ -148,9 +148,9 @@ OMP_TARGET_OFFLOAD=DISABLED ./omp_target_gpu.exe
 #pragma omp teams
     S
 ```
-複数のチームを作成し、各チームの*マスター*が $S$ を実行する
+複数のチームを作成し, 各チームの*マスター*が $S$ を実行する
 
-* `#pragma omp parallel` に似ており、多くのスレッドが同じ文を実行する効果を持つ
+* `#pragma omp parallel` に似ており, 多くのスレッドが同じ文を実行する効果を持つ
 * `teams` は `parallel` の外側にある追加の並列化レイヤーと考えればよい
   * `teams` はチームを多数作る
   * `parallel` は各チーム内でスレッドを多数作る
@@ -175,7 +175,7 @@ nvc -mp=gpu omp_teams.c -o omp_teams_gpu.exe
 
 * 注:
   * `teams` は `target` のすぐ内側に現れる必要がある
-  * そのため実際、`target` と `teams` はしばしば一行で使用される (`#pragma omp target teams`)
+  * そのため実際, `target` と `teams` はしばしば一行で使用される (`#pragma omp target teams`)
   * つまり次の形が普通
 
 <!--- end md --->
@@ -196,7 +196,7 @@ nvc -mp=gpu omp_target_teams.c -o omp_target_teams_gpu.exe
 <!--- md --->
 ## チームの数を指定する
 
-* `teams` 構文で作成されるチームの数を $x$ に設定するには、以下のいずれかの方法がある
+* `teams` 構文で作成されるチームの数を $x$ に設定するには, 以下のいずれかの方法がある
   * `teams` 構文に `num_teams(x)` を追加 (`parallel` 構文の `num_threads` と類似)
   * コマンド実行時に `OMP_NUM_TEAMS=x` 環境変数を設定 (`OMP_NUM_THREADS` と類似)
 <!--- end md --->
@@ -214,7 +214,7 @@ OMP_NUM_TEAMS=3 ./omp_teams_gpu.exe
 
 ## チームIDとチーム数の取得
 
-* `omp_get_thread_num()` と `omp_get_num_threads()` がスレッドIDとスレッド数を取得するのと同様に、チームIDとチーム数を取得できる
+* `omp_get_thread_num()` と `omp_get_num_threads()` がスレッドIDとスレッド数を取得するのと同様に, チームIDとチーム数を取得できる
   * `omp_get_team_num()`
   * `omp_get_num_teams()` 
 <!--- end md --->
@@ -297,7 +297,7 @@ nvc -mp=gpu omp_distribute.c -o omp_distribute_gpu.exe
 
 <!--- md --->
 
-* 異なるチーム数とコマンドラインの繰り返し回数で次のコマンドを実行し、その結果を理解せよ
+* 異なるチーム数とコマンドラインの繰り返し回数で次のコマンドを実行し, その結果を理解せよ
 <!--- end md --->
 
 <!--- code w kernel=bash --->
@@ -309,7 +309,7 @@ OMP_NUM_TEAMS=3 ./omp_distribute_gpu.exe 5
 #*P teams と distribute を理解する
 
 * 後々混乱しないように簡単なクイズ
-* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ ./omp_distribute_gpu.exe $m$</tt></font> で実行したときに、どの行が何スレッドによって実行されるか(何が何回表示されるか)を推測し、その結果、何行が出力されるかを, 
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ ./omp_distribute_gpu.exe $m$</tt></font> で実行したときに, どの行が何スレッドによって実行されるか(何が何回表示されるか)を推測し, その結果, 何行が出力されるかを, 
 * $T$ と $m$ の式で答えよ
 <!--- end md --->
 
@@ -317,7 +317,7 @@ OMP_NUM_TEAMS=3 ./omp_distribute_gpu.exe 5
 <!--- end md --->
 
 <!--- md --->
-* 答えを確認するために、以下のように `wc` コマンドを使用して行数を数えればよい(左端の数字が行数)
+* 答えを確認するために, 以下のように `wc` コマンドを使用して行数を数えればよい(左端の数字が行数)
 
 * 次のコマンドを異なるチーム数とコマンドラインの繰り返し回数で実行せよ
 <!--- end md --->
@@ -329,7 +329,7 @@ OMP_NUM_TEAMS=3 ./omp_distribute_gpu.exe 5 | wc -l
 <!--- md --->
 
 * 注:
-  * `teams` と `distribute` の間に何も文がなければ、1つの指示 (`#pragma omp teams distribute`)で書ける (`parallel` と `for` でできたのと同じ)
+  * `teams` と `distribute` の間に何も文がなければ, 1つの指示 (`#pragma omp teams distribute`)で書ける (`parallel` と `for` でできたのと同じ)
   * `target` と `teams` を結合できた, ということで, 3つを1つの指示に結合できる
 <!--- end md --->
 
@@ -373,9 +373,9 @@ OMP_NUM_TEAMS=3 ./omp_target_teams_distribute_gpu.exe 7
 ```
 各チーム内でスレッドを作成する
 
-* `teams` 内で使用すると、**各チーム**内でスレッドを作成し、それぞれが $S$ を実行する
+* `teams` 内で使用すると, **各チーム**内でスレッドを作成し, それぞれが $S$ を実行する
 
-* 例として、<font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_team_parallel_gpu.exe</tt></font> は $T$ チームを作成し、それぞれが $H$ スレッドを作成する
+* 例として, <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_team_parallel_gpu.exe</tt></font> は $T$ チームを作成し, それぞれが $H$ スレッドを作成する
 <!--- end md --->
 
 <!--- code w kernel=python --->
@@ -395,14 +395,14 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe
 
 * マルチコアCPUでもスレッドを作成するために `parallel` を使用したことを思い出そう
 * ただし`teams` は不要だった
-* これはマルチコアCPU環境では、全体が一つのチームだったと考えれば辻褄が合う
+* これはマルチコアCPU環境では, 全体が一つのチームだったと考えれば辻褄が合う
 * 実はCPUであっても, `#pragma target teams` をつけても害はない
 * 1つチームが作られ, その後`#pragma omp parallel`でその一つのチーム内にスレッドが作られるという動作になる
 
 * <font color="red">重要な注意1: GPUではOMP_NUM_THREADS は効き目がない</font>模様
-  * CPUでは、`parallel` によって作成されるスレッド数は `OMP_NUM_THREADS=x` 環境変数や `parallel` 指令の `num_threads(x)` で指定できた
-  * しかし、GPUで実行する場合はこれができない模様 (実装の問題か仕様の問題かは不明)
-  * 設定する必要がある場合は、`num_threads(x)` を使用する必要がある
+  * CPUでは, `parallel` によって作成されるスレッド数は `OMP_NUM_THREADS=x` 環境変数や `parallel` 指令の `num_threads(x)` で指定できた
+  * しかし, GPUで実行する場合はこれができない模様 (実装の問題か仕様の問題かは不明)
+  * 設定する必要がある場合は, `num_threads(x)` を使用する必要がある
     * 上記のプログラムでは環境変数を(`getenv`で)読んで`num_threads(x)` に渡している
   * または省略してシステムに任せる
 * <font color="red">重要な注意2: スレッド数は32の倍数でなければならない</font>模様
@@ -417,7 +417,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe
 #*P teamsとparallelを理解する
 
 * `teams`と`parallel`の組み合わせに関するクイズ
-* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_parallel_gpu.exe</tt></font> で実行したときに、どの行が何スレッドによって実行されるかを推測し、その結果、何行が出力されるかを表現します
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_parallel_gpu.exe</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを表現します
 * 答えを $T$ と $H$ の式で答えよ
 <!--- end md --->
 
@@ -425,7 +425,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe
 <!--- end md --->
 
 <!--- md --->
-* 答えを簡単に確認するために、`wc` コマンドを使用して行数を数えよ
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
 <!--- end md --->
 
 <!--- code w kernel=bash --->
@@ -436,7 +436,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe | wc -l
 
 ## `teams` 内の `distribute` 内の `parallel`
 
-* 典型的には、`parallel` は `distribute` 内 (必然的に `teams` 内) で呼び出す
+* 典型的には, `parallel` は `distribute` 内 (必然的に `teams` 内) で呼び出す
 * 以下は構文的には新しいことは何もない
 
 <!--- end md --->
@@ -459,7 +459,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_distribute_parallel_gpu.exe 5
 #*P teams, distribute, parallelを理解する
 
 * team, distribute, parallelの組み合わせに関するクイズ
-* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_distribute_parallel_gpu.exe $m$</tt></font> で実行したときに、どの行が何スレッドによって実行されるかを推測し、その結果、何行が出力されるかを式で表せ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_distribute_parallel_gpu.exe $m$</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを式で表せ
 * $T$, $H$, $m$ の式で答えよ
 <!--- end md --->
 
@@ -467,7 +467,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_distribute_parallel_gpu.exe 5
 <!--- end md --->
 
 <!--- md --->
-* 答えを簡単に確認するために、`wc` コマンドを使用して行数を数えよ
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
 <!--- end md --->
 
 <!--- code w kernel=bash --->
@@ -492,7 +492,7 @@ for (...) {
 }  
 ```
 
-* `parallel` 内で使用されると、ループの繰り返しをスレッドに分配する
+* `parallel` 内で使用されると, ループの繰り返しをスレッドに分配する
 
 <!--- end md --->
 
@@ -514,9 +514,9 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6
 #*P teams, distributed, paralle, for を理解する
 
 * teams, distributed, paralle, for の組み合わせに関するクイズ
-* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_for_gpu.exe $m$ $n$</tt></font> で実行したときに、どの行が何スレッドによって実行されるかを推測し、その結果、何行が出力されるかを式で洗わせ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_for_gpu.exe $m$ $n$</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを式で洗わせ
 * $T$, $H$, $m$, $n$ の式で表せ
-* 答えを簡単に確認するために、`wc` コマンドを使用して行数を数えよ
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
 <!--- end md --->
 
 <!--- code w kernel=bash --->
@@ -528,8 +528,8 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6 | wc -l
 # よく出てくるディレクティブの結合
 
 * 論理的な一貫性のない多くの異なる指示の名前にうんざりすることだろう
-* それぞれは名目上は独立した指示ですが、実際にはほとんど常に一緒に使用される
-* 多くの場合, 目的はループを並列に実行することなので、以下の形式のいずれかで使用されることが多い
+* それぞれは名目上は独立した指示ですが, 実際にはほとんど常に一緒に使用される
+* 多くの場合, 目的はループを並列に実行することなので, 以下の形式のいずれかで使用されることが多い
 
 1\. すべてを結合
 ```
@@ -538,7 +538,7 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6 | wc -l
       ...
     }
 ```
-2\. 外側のループを `teams` と `distribute` で並列化し、内側のループを `parallel` と `for` で並列化する
+2\. 外側のループを `teams` と `distribute` で並列化し, 内側のループを `parallel` と `for` で並列化する
 
 ```
 #pragma omp target teams distribute
@@ -559,29 +559,29 @@ OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6 | wc -l
 * GPUはCPUと異なるメモリを持っていて, (CPU内のコアと異なり)メモリをハードウェア的に共有しているわけではない(実は最近この事情は変わりつつあるが, 少なくともこの環境やWisteriaはそうではない)
 * したがってある計算をGPU上で行おうと思ったら一般にはその計算が必要とするデータをGPUに送ってから実行する必要がある
 * 逆にGPU上で得た結果をCPUで使いたければ, GPUが計算した結果をCPUに送る必要がある
-* `target data` とその `map` 節は、それらのデータ転送を手軽に行う指示である
+* `target data` とその `map` 節は, それらのデータ転送を手軽に行う指示である
 
 * <font color="red">警告：</font> [仕様書](https://www.openmp.org/spec-html/5.0/openmpsu109.html#x142-6180002.19.7)は法律のようなわかりにくさ
-* 以下はより直截で, 普通の日本語で説明を試みているが、一部は仕様書で裏を取らず, 実際の実験や実装が行っているであろうことの想像に基づいて書かれている
+* 以下はより直截で, 普通の日本語で説明を試みているが, 一部は仕様書で裏を取らず, 実際の実験や実装が行っているであろうことの想像に基づいて書かれている
 
 * <font color="blue">構文：</font>
 ```
 #pragma omp target data map(to: ...) map(from: ...) map(tofrom: ...) ...
     S
 ```
-ここで、... は変数、配列名、または基底アドレス + 範囲 (例: a[0:n])など
+ここで, ... は変数, 配列名, または基底アドレス + 範囲 (例: a[0:n])など
 
-* これらの節は指定された変数、配列、またはアドレス範囲が $S$ の間または後に「期待される」値を持つという効果をもたらす
-* より具体的には、
+* これらの節は指定された変数, 配列, またはアドレス範囲が $S$ の間または後に「期待される」値を持つという効果をもたらす
+* より具体的には, 
   * `map(to: ...)` に指定されたものは $S$ の間GPU上で有効になります
   * `map(from: ...)` に指定されたものは $S$ の後CPU上で有効になります
-* これを達成するために、実行時システムによってCPUアドレスとGPUアドレス間の <font color="blue">_マッピング_</font> が維持され、必要に応じて内容がCPU-GPU間で移動する(コピーされる)
+* これを達成するために, 実行時システムによってCPUアドレスとGPUアドレス間の <font color="blue">_マッピング_</font> が維持され, 必要に応じて内容がCPU-GPU間で移動する(コピーされる)
   * `map(to: ...)` に指定されたデータは $S$ の前に必要ならばGPUにコピーされる (CPU -> GPU)
   * `map(from: ...)` に指定されたデータは $S$ の後に必要ならばGPUからコピーされる (GPU -> CPU)
   * `map(tofrom: ...)` は両方の効果を持つ
 * `map` 節を指定しなくても同じ効果を持つこともある(が, どういうときにそうなるかを仕様書から理解しようとするよりも, 指定するほうが早い)
 
-* 通常、このディレクティブは `#pragma omp target` と一緒に使用され、実際にこれらの節を `#pragma omp target` に指定することもできる
+* 通常, このディレクティブは `#pragma omp target` と一緒に使用され, 実際にこれらの節を `#pragma omp target` に指定することもできる
 
 <!--- end md --->
 
@@ -761,10 +761,10 @@ done
 
 #*P OpenMPを使用してGPU上で配列の合計を取得
 
-* 次のコードは、配列を初期化し、要素の合計を計算するCPUのみの逐次コード
+* 次のコードは, 配列を初期化し, 要素の合計を計算するCPUのみの逐次コード
 * 配列の合計をGPUで計算するために適切なompディレクティブを追加せよ
-* すべての要素は1で初期化されているため、結果が予測しやすいですが、もちろんそれを仮定してはいけない
-* OpenMPを使用しているため、CPUコンテキストで既に学んだ多くの機能がそのまま機能します (例: reduction)
+* すべての要素は1で初期化されているため, 結果が予測しやすいですが, もちろんそれを仮定してはいけない
+* OpenMPを使用しているため, CPUコンテキストで既に学んだ多くの機能がそのまま機能します (例: reduction)
 * ヒント:
   * すべてを機能させるために1行追加するだけです
 * チーム数 (`OMP_NUM_TEAMS`) を変更してパフォーマンスがどのように影響するかを確認せよ
@@ -782,11 +782,11 @@ nvc -mp=gpu omp_gpu_sum.c -o omp_gpu_sum_gpu.exe
 
 <!--- md --->
 
-* 注: この実験では、GPUで実行することで処理が速くなることは期待できない
-* 単に、GPUで実行されていることを確認するためのもの
+* 注: この実験では, GPUで実行することで処理が速くなることは期待できない
+* 単に, GPUで実行されていることを確認するためのもの
 * そのために次を試せ
   * `OMP_TARGET_OFFLOAD=MANDATORY` と `OMP_TARGET_OFFLOAD=DISABLED` の比較
-  * `OMP_NUM_TEAMS` を変更して、パフォーマンスがCPUとGPU、および大きなチーム数と小規模なチーム数でどのように変わるかを確認
+  * `OMP_NUM_TEAMS` を変更して, パフォーマンスがCPUとGPU, および大きなチーム数と小規模なチーム数でどのように変わるかを確認
 
 <!--- end md --->
 
