@@ -1,12 +1,13 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -L rscgrp=lecture-o
+#PJM -L rscgrp=lecture7-o
+#xxxxPJM -L rscgrp=lecture-o
 #PJM -L node=1
-#xPJM gpu=1
+#xxxxPJM gpu=1
 #PJM --mpi proc=1
 #PJM --omp thread=1
 #PJM -L elapse=0:01:00
-#PJM -g gt27
+#PJM -g gt47
 #PJM -j
 #PJM -o 0done.txt
 done_txt=0done.txt
@@ -14,8 +15,10 @@ log_txt=0log.txt
 
 # 使い方 :
 # (1) batch_main の中に計算ノードで実行したいコマンドを書く
-# (2) 必要に応じて 上記 elapse=0:01:00 (1分) を変更
-# (3) (/work/gt11/ユーザ名 の下のどこかで)
+# (2) 必要に応じて 上記 elapse=0:01:00 (制限時間1分)
+# (3) 必要に応じて rscgrp=lecture7-o (授業時間中), rscgrp=lecture-o (授業時間外) をセット
+# (4) PJM gpu=1 (GPUを使う場合) を指定
+# (5) (/work/gt47/ユーザ名 の下のどこかで)
 #     ./submit.sh
 #
 # 普通に pjsub を使うのに比べて便利なところ
