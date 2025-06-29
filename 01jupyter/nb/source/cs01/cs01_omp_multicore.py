@@ -86,13 +86,31 @@ nvc -fast -mp=multicore omp_parallel.c -o omp_parallel_mp.exe
 
 """ md
 * `OMP_NUM_THREADS` という環境変数 (「環境変数」を知らない人は以下のようにコマンドの前にある`変数名=値`のことだと思えば良い) を設定すると, `printf("in parallel\n");` (`#pragma omp parallel` 直下の文) を実行するスレッドの数を変えられる
-* 以下で`OMP_NUM_THREADS`に設定する値を色々変えて実行してみよ
+* 以下はログインノード上で実行する
+* `OMP_NUM_THREADS`に設定する値を色々変えて実行してみよ
 """
 
 """ code w """
 %%bash
 OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 """ """
+
+""" md
+* 以下はジョブ投入をして実行する
+* 必要に応じて rscgrp や elapse などを指定して実行せよ
+* 例:
+```
+#PJM -L rscgrp=lecture7-a
+#PJM -L elapse=0:10:00
+```
+"""
+
+""" code w """
+%%bash_submit
+
+OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
+""" """
+
 
 """ md
 
