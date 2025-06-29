@@ -448,16 +448,16 @@ done
 * Wisteria Aquarius の計算ノードは 72 コアで, 8 GPUを搭載しており, 1 GPUにつき 72 / 8 = 9 コアが割り当てられる
 * 36 コアまで性能向上させたければ
 ```
-#PJM -L gpu=1
-#PJM --omp thread=9
+#PJM -L gpu=4
+#PJM --omp thread=36
 ```
 を指定する必要がある
 """
 
 """ code w """
 %%bash_submit
-#PJM -L gpu=1
-#PJM --omp thread=9
+#PJM -L gpu=4
+#PJM --omp thread=36
 #PJM -L elapse=0:05:00
 
 for x in 1 2 3 4 6 8 9 12 18 21 24 27 30 33 36; do
