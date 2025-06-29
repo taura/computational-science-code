@@ -3,7 +3,7 @@
 #PJM -L rscgrp=lecture7-o
 #xxxxPJM -L rscgrp=lecture-o
 #PJM -L node=1
-#xxxxPJM gpu=1
+#xxxxPJM -L gpu=1
 #PJM --mpi proc=1
 #PJM --omp thread=1
 #PJM -L elapse=0:01:00
