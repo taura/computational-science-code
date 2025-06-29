@@ -266,7 +266,7 @@ uptime
 """ code """
 %%bash_submit
 #PJM -L rscgrp=lecture7-a
-#PJM -L elapse=0:20:00
+#PJM -L elapse=0:10:00
 
 hostname
 pwd
@@ -285,7 +285,7 @@ uptime
 %%bash
 #_submit
 #PJM -L rscgrp=lecture7-a
-#PJM -L elapse=0:20:00
+#PJM -L elapse=0:10:00
 
 hostname
 pwd
