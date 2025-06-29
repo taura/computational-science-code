@@ -115,9 +115,9 @@ def bash_submit(line, cell):
 #PJM -j
 #PJM -o 0output.txt
 """
-    return submit_cell_preamble(line, opt + cell)
+    return submit_cell(line, opt + cell)
 
 @register_cell_magic
 def bash_submit_(line, cell):
     opt = ""
-    return submit_cell_preamble(line, opt + cell)
+    return submit_cell(line, opt + cell)
