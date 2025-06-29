@@ -76,7 +76,7 @@ import submit
 
 """ code w """
 %%writefile omp_parallel.c
-<!--- include nb/source/cs01/include/omp_parallel.c --->
+include nb/source/cs01/include/omp_parallel.c
 """ """
 
 """ code w """
