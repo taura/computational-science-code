@@ -237,7 +237,7 @@ import submit
 
 hostname
 pwd
-who
+whoami
 uptime
 """ """
 
