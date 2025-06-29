@@ -23,11 +23,11 @@ int main(int argc, char ** argv) {
   for (long i = 0; i < m; i++) {
     v[i] = 1.0;
   }
-  long t0 = omp_get_wtime();
+  double t0 = omp_get_wtime();
   // get sum of the array (you make it happen on GPU)
   double s = sum(v, m);
-  long t1 = omp_get_wtime();
-  printf("pid = %d, answer = %f, took %ld ns\n",
+  double t1 = omp_get_wtime();
+  printf("pid = %d, answer = %f, took %f sec\n",
          getpid(), s, t1 - t0);
   return 0;
 }
