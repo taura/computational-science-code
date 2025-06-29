@@ -107,7 +107,6 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 
 """ code w """
 %%bash_submit
-
 OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 """ """
 
@@ -138,7 +137,7 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 
 """ code w """
 %%writefile omp_parallel_num_threads.c
-<!--- include nb/source/cs01/include/omp_parallel_num_threads.c --->
+""" include nb/source/cs01/include/omp_parallel_num_threads.c """
 """ """
 
 """ code w """
@@ -205,7 +204,7 @@ nproc
 
 """ code w """
 %%writefile omp_parallel_rank.c
-<!--- include nb/source/cs01/include/omp_parallel_rank.c --->
+""" include nb/source/cs01/include/omp_parallel_rank.c """
 """ """
 
 """ code w """
@@ -246,9 +245,10 @@ nproc
 * CPUの機種名は以下で観測できる
 """
 
-<!--- code kernel=bash --->
+""" code """
+%%bash
 cat /proc/cpuinfo | head -30
-<!--- end code --->
+""" """
 
 """ md
 
@@ -270,7 +270,7 @@ cat /proc/cpuinfo | head -30
 
 """ code w """
 %%writefile omp_parallel_for.c
-<!--- include nb/source/cs01/include/omp_parallel_for.c --->
+""" include nb/source/cs01/include/omp_parallel_for.c """
 """ """
 
 """ code w """
@@ -337,7 +337,7 @@ OMP_SCHEDULE=static コマンド
 
 """ code w """
 %%writefile omp_parallel_for_thread_num.c
-<!--- include nb/source/cs01/include/omp_parallel_for_thread_num.c --->
+""" include nb/source/cs01/include/omp_parallel_for_thread_num.c """
 """ """
 
 """ code w """
@@ -373,7 +373,7 @@ OMP_NUM_THREADS=2 OMP_SCHEDULE=static time ./omp_parallel_for_thread_num_mp.exe 
 
 """ code w """
 %%writefile omp_parallel_for_collapse.c
-<!--- include nb/source/cs01/include/omp_parallel_for_collapse.c --->
+""" include nb/source/cs01/include/omp_parallel_for_collapse.c """
 """ """
 
 """ code w """
@@ -409,7 +409,7 @@ OMP_NUM_THREADS=16 time ./omp_parallel_for_collapse_mp.exe 4
 
 """ code w """
 %%writefile omp_speedup.c
-<!--- include nb/source/cs01/include/omp_speedup.c --->
+""" include nb/source/cs01/include/omp_speedup.c """
 """ """
 
 """ code w """
@@ -444,7 +444,7 @@ done
 """
 
 """ code w """
-<!--- include nb/source/cs01/include/speedup.py --->
+""" include nb/source/cs01/include/speedup.py """
 """ """
 
 """ md
@@ -486,7 +486,7 @@ done
 
 """ code w """
 %%writefile integral.c
-<!--- include nb/source/cs01/include/integral.c --->
+""" include nb/source/cs01/include/integral.c """
 """ """
 
 """ code w """
@@ -507,7 +507,7 @@ nvc -fast -mp=multicore integral.c -o integral_mp.exe
 
 """ code w """
 %%writefile omp_integral_racy.c
-<!--- include nb/source/cs01/include/omp_integral_racy.c --->
+""" include nb/source/cs01/include/omp_integral_racy.c """
 """ """
 
 """ code w """
@@ -566,7 +566,7 @@ OMP_NUM_THREADS=4 time ./omp_integral_racy_mp.exe
 
 """ code w """
 %%writefile omp_integral_reduction.c
-<!--- include nb/source/cs01/include/omp_integral_reduction.c --->
+""" include nb/source/cs01/include/omp_integral_reduction.c """
 """ """
 
 """ code w """
