@@ -28,7 +28,7 @@ def submit_job(a_sh):
         job_id = None
     else:        
         job_id = m.group("jobid")
-    return status, job_id
+    return status, out, job_id
 
 def wait_finish(job_id):
     i = 0
@@ -95,7 +95,11 @@ def submit_cell(line, cell):
     fcell = cell.format(**dic)
     output = get_output(fcell)
     write_cell_to_script(fcell, cmd_sh)
-    status, job_id = submit_job(cmd_sh)
+    status, out, job_id = submit_job(cmd_sh)
+    if job_id is None:
+        print(f"""===== failed to submit job =====
+{out}""")
+        return None
     wait_finish(job_id)
     if output is None:
         print("===== could not get output file name (specify with #PJM -o filename) =====")
