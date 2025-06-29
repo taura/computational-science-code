@@ -81,13 +81,15 @@ def parse_args_to_dict(arg_string):
     return result
     
 def get_output(fcell):
-    m = re.search("#PJM\s+\-o\s+(?P<output>.*)", fcell)
-    if m is None:
-        return None
-    else:
-        return m.group("output")
+    p = re.compile("#PJM\s+\-o\s+(?P<output>.*)")
+    output = None
+    for line in fcell.split("\n"):
+        m = p.match(line)
+        if m:
+            output = m.group("output")
+    return output
     
-def submit_cell_(line, cell):
+def submit_cell(line, cell):
     dic = parse_args_to_dict(line)
     cmd_sh = dic.setdefault("script", "cmd.sh")
     fcell = cell.format(**dic)
@@ -102,10 +104,20 @@ def submit_cell_(line, cell):
         return read_output(output)
 
 @register_cell_magic
-def submit_cell(line, cell):
-    return submit_cell_(line, cell)
+def bash_submit(line, cell):
+    opt = """
+#PJM -L rscgrp=lecture-a
+#PJM -L gpu=1
+#PJM --mpi proc=1
+#PJM --omp thread=1
+#PJM -L elapse=0:01:00
+#PJM -g gt47
+#PJM -j
+#PJM -o 0output.txt
+"""
+    return submit_cell_preamble(line, opt + cell)
 
 @register_cell_magic
-def bash_submit(line, cell):
-    return submit_cell_(line, cell)
-
+def bash_submit_(line, cell):
+    opt = ""
+    return submit_cell_preamble(line, opt + cell)
