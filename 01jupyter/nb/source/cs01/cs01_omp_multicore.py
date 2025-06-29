@@ -110,6 +110,11 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 """ """
 
+""" md
+* 以下では必要のない場合は `%%bash_submit` ではなく `%%bash` を用いた実行セルを示すが, 必要に応じて自分で `%%bash_submit` に変えて実行せよ
+
+"""
+
 
 """ md
 

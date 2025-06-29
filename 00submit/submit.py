@@ -91,8 +91,8 @@ def get_output(fcell):
     
 def submit_cell(line, cell):
     dic = parse_args_to_dict(line)
-    cmd_sh = dic.setdefault("script", "cmd.sh")
-    fcell = cell.format(**dic)
+    cmd_sh = dic.get("script", "cmd.sh")
+    fcell = cell # cell.format(**dic)
     output = get_output(fcell)
     write_cell_to_script(fcell, cmd_sh)
     status, out, job_id = submit_job(cmd_sh)
