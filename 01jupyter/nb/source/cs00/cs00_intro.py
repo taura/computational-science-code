@@ -230,8 +230,8 @@ import submit
 %%bash_submit
 #PJM -L rscgrp=lecture-a
 #PJM -L gpu=1
+#PJM --omp thread=9
 #PJM --mpi proc=1
-#PJM --omp thread=1
 #PJM -L elapse=0:01:00
 #PJM -g gt47
 #PJM -j
