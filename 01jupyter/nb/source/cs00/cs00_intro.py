@@ -161,7 +161,7 @@ gcc -o hello hello.c
 
 """ code """
 %%bash
-ln -sf /work/gt47/$USER ~/.notebook/lustre
+[ ! -e ~/.notebook/lustre ] && ln -s /work/gt47/$USER ~/.notebook/lustre
 """ """
 
 """ md
