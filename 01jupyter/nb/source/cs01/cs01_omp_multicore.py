@@ -42,7 +42,6 @@
 """
 
 """ code w """
-%%bash
 import os
 paths = os.environ["PATH"].split(":")
 nvc_path="/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin"
