@@ -296,12 +296,13 @@ uptime
 
 """ md
 
-* 以下はOdyssey用の推奨値
+* Odysseyに投げるときは `%%bash_submit` の変わりに `%%bash_submit_o` を使う
+* 以下がデフォルト値 (つまりなくても同じ)
 
 """
 
 """ code """
-%%bash_submit
+%%bash_submit_o
 #PJM -L rscgrp=lecture-o
 #PJM -L elapse=0:01:00
 #PJM -L node=1
