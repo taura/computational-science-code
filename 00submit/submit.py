@@ -111,10 +111,22 @@ def submit_cell(line, cell):
 def bash_submit(line, cell):
     opt = """
 #PJM -L rscgrp=lecture-a
+#PJM -L elapse=0:01:00
 #PJM -L gpu=1
 #PJM --omp thread=9
-#PJM --mpi proc=1
+#PJM -g gt47
+#PJM -j
+#PJM -o 0output.txt
+"""
+    return submit_cell(line, opt + cell)
+
+@register_cell_magic
+def bash_submit_o(line, cell):
+    opt = """
+#PJM -L rscgrp=lecture-o
 #PJM -L elapse=0:01:00
+#PJM -L node=1
+#PJM --omp thread=48
 #PJM -g gt47
 #PJM -j
 #PJM -o 0output.txt
