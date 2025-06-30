@@ -30,15 +30,21 @@
 
 ## コンパイラ
 
-* この演習環境では, 同じコンパイラでCPUもGPUもサポートしているという理由で, NVIDIA HPC SDKを使う
-* コマンド名:
-  * C: `nvc`
-  * C++: `nvc++`
-* コンパイルオプション:
-  * `-mp=multicore` をつけると CPU用のOpenMPがサポートされる
-  * `-mp=gpu` をつけると GPU用のOpenMPがサポートされる (次週)
+* Aquariusでは, 同じコンパイラでCPUもGPUもサポートしているという理由で, NVIDIA HPC SDKを使う
+  * コマンド名:
+    * C: `nvc`
+    * C++: `nvc++`
+  * コンパイルオプション:
+    * `-mp=multicore` をつけると CPU用のOpenMPがサポートされる
+    * `-mp=gpu` をつけると GPU用のOpenMPがサポートされる
+* Odysseyでは, 富士通コンパイラを使う
+  * コマンド名:
+    * C: `fccpx`
+    * C++: `FCCpx`
+  * コンパイルオプション:
+    * `-Kopenmp` をつけると CPU用のOpenMPがサポートされる
 * 上記のコマンドを実行できるようにするために, 以下を実行する
-  * なお以下はコマンドライン端末上では `module load nvidia` とするのが本来のやり方だがJupyter上で`module`コマンドが動かないのでやむなく以下のようにする
+  * なお以下はコマンドライン端末上では `module load nvidia`, `module load fj` とするのが本来のやり方だがJupyter上で`module`コマンドが動かないのでやむなく以下のようにする
 """
 
 """ code w """
@@ -48,8 +54,18 @@ nvc_path = "/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers
 fj_path = "/opt/FJSVxtclanga/tcsds-1.2.41/bin"
 for path in [nvc_path, fj_path]:
     if path not in paths:
-        paths = ":".join([path] + paths)
-os.environ["PATH"] = paths
+        paths = [path] + paths
+os.environ["PATH"] = ":".join(paths)
+""" """
+
+""" md
+* 以下でコンパイラのパス名が fccpx is ..., nvc is ..., のように無事表示されれば成功
+"""
+
+""" code w """
+%%bash
+which nvc
+which fccpx
 """ """
 
 """ md
@@ -87,6 +103,16 @@ nvc -fast -mp=multicore omp_parallel.c -o omp_parallel_mp.exe
 """ """
 
 """ md
+* 以下ではいちいち示さないが参考のため Odyssey用のコンパイルオプション
+
+"""
+
+""" code w """
+%%bash
+fccpx -Kfast -Kopenmp omp_parallel.c -o omp_parallel_mp.exe
+""" """
+
+""" md
 * `OMP_NUM_THREADS` という環境変数 (「環境変数」を知らない人は以下のようにコマンドの前にある`変数名=値`のことだと思えば良い) を設定すると, `printf("in parallel\n");` (`#pragma omp parallel` 直下の文) を実行するスレッドの数を変えられる
 * 以下はログインノード上で実行する
 * `OMP_NUM_THREADS`に設定する値を色々変えて実行してみよ
@@ -113,10 +139,18 @@ OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
 """ """
 
 """ md
+* 以下は fccpx でコンパイルした Odyssey 用の実行
+"""
+
+""" code w """
+%%bash_submit_o
+OMP_NUM_THREADS=3 ./omp_parallel_mp.exe
+""" """
+
+""" md
 * 以下では必要のない場合は `%%bash_submit` ではなく `%%bash` を用いた実行セルを示すが, 必要に応じて自分で `%%bash_submit` に変えて実行せよ
 
 """
-
 
 """ md
 
