@@ -44,9 +44,12 @@
 """ code w """
 import os
 paths = os.environ["PATH"].split(":")
-nvc_path="/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin"
-if nvc_path not in paths:
-    os.environ["PATH"] = ":".join([nvc_path] + paths)
+nvc_path = "/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin"
+fj_path = "/opt/FJSVxtclanga/tcsds-1.2.41/bin"
+for path in [nvc_path, fj_path]:
+    if path not in paths:
+        paths = ":".join([path] + paths)
+os.environ["PATH"] = paths
 """ """
 
 """ md
@@ -62,7 +65,6 @@ if submit_path not in sys.path:
     sys.path.append(submit_path)
 import submit
 """ """
-
 
 """ md
 # `#pragma omp parallel` 構文

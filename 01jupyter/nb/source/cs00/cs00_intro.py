@@ -16,9 +16,11 @@
 # このnotebookの使い方 / How this notebook works
 
 * スーパーコンピュータ(Wisteria)で, SSH + コマンドの代わりに, プログラミングを学習する環境
-* 本演習では Wisteria Aquarius (Intel CPU + NVIDIA GPU) を用いる
+* 本演習では
+  * Wisteria Aquarius (Intel CPU + NVIDIA GPU) を用いる
+  * マルチコア並列 (OpenMP) の演習では Wisteria Odyssey を用いることもできる
 * Jupyterのセルを実行するだけで例題プログラムを保存, コンパイル, 実行できる
-* GPUを用いず, 一瞬で終了するコマンドであればログインノードで直接実行
+* GPU (NVIDIA GPUが必要), Odyssey (CPUがログインノードと異なる) を用いず, かつすぐに終了する (ログインノードにほとんど負荷をかけない) コマンドであればログインノード (Intel CPU) で直接実行
 * それ以外の場合はセルをほんの少し修正するとそれをバッチキューに入れて実行できる
 
 * 入口: https://wisteria08.cc.u-tokyo.ac.jp:8000/jupyterhub/ 
@@ -229,10 +231,9 @@ import submit
 """ code """
 %%bash_submit
 #PJM -L rscgrp=lecture-a
+#PJM -L elapse=0:01:00
 #PJM -L gpu=1
 #PJM --omp thread=9
-#PJM --mpi proc=1
-#PJM -L elapse=0:01:00
 #PJM -g gt47
 #PJM -j
 #PJM -o 0output.txt
@@ -293,3 +294,24 @@ who
 uptime
 """ """
 
+""" md
+
+* 以下はOdyssey用の推奨値
+
+"""
+
+""" code """
+%%bash_submit
+#PJM -L rscgrp=lecture-o
+#PJM -L elapse=0:01:00
+#PJM -L node=1
+#PJM --omp thread=48
+#PJM -g gt47
+#PJM -j
+#PJM -o 0output.txt
+
+hostname
+pwd
+whoami
+uptime
+""" """
