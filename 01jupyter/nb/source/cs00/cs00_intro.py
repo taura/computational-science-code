@@ -316,3 +316,42 @@ pwd
 whoami
 uptime
 """ """
+
+""" md
+
+# AIチューター
+
+## 設定
+
+"""
+
+""" code """
+import sys
+ta_paths = ["/work/gt47/share/taura/ai-tutor-hey",
+            "/work/gt47/share/taura/ai-tutor-hey/ex"]
+for path in ta_paths:
+  if path not in sys.path:
+    sys.path.append(path)
+from heytutor import hey, I, C, R, D, config
+import openmp_tutor
+""" """
+
+""" md
+
+## 質問例
+
+* hey("omp parallelの文法を教えて") ... 自由な質問
+* I("reduction句") ... あるトピックについて説明
+* C("omp for") ... あるトピックに関するコーディング問題を出題
+* R("omp for") ... あるトピックに関するリーディング問題を出題
+
+以下のどれかのコメント # を外して実行してみよ
+"""
+
+""" code w """
+# hey("omp parallelの文法を教えて")
+# I("reduction句")
+# C("omp for")
+# R("omp for")
+
+""" """
