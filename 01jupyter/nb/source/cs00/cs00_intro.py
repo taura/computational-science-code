@@ -332,6 +332,13 @@ uptime
 
 # AIチューター
 
+* Jupyter環境から言語仕様やコードについての質問ができるAIチュータを組み込んでいる
+* <font color="red">ただし 2025/07/06 10:00AM 現在, 実際に質問をすると
+```
+AttributeError: module 'openai' has no attribute 'AzureOpenAI'
+```
+というエラーが出てしまう(対応お願い中). 授業時間までに直っていることを期待(直らなくても授業後に直ることを期待)</font>
+
 ## 設定
 
 """
@@ -351,10 +358,14 @@ import openmp_cfg
 
 ## 質問例
 
+* `hey, I, C, R` という4つの関数で質問ができる
+* `hey` は ChatGPT に投げているのとほぼ同じ意味
+
 * hey("omp parallelの文法を教えて") ... 自由な質問
-* I("reduction句") ... あるトピックについて説明
-* C("omp for") ... あるトピックに関するコーディング問題を出題
+* I("collapse句") ... あるトピックについて説明
+* C("reduction句") ... あるトピックに関するコーディング問題を出題
 * R("omp for") ... あるトピックに関するリーディング問題を出題
+* D("omp target") ... あるトピックに関するデバッグ問題を出題
 
 以下のコメント # を外していくつか実行してみよ
 """
@@ -366,12 +377,12 @@ import openmp_cfg
 
 """ code w """
 # 説明
-# I("reduction句")
+# I("collapse句")
 """ """
 
 """ code w """
 # コーディング問題
-# C("omp for")
+# C("reduction句")
 """ """
 
 """ code w """
@@ -381,7 +392,7 @@ import openmp_cfg
 
 """ code w """
 # デバッグ問題
-# R("omp for")
+# D("omp target")
 """ """
 
 """ md
