@@ -156,6 +156,17 @@ gcc -o hello hello.c
 """
 
 """ md
+## セルの追加, 削除
+
+* Editメニューからあるセルを選択して
+  * `a` : 上にセルを追加
+  * `b` : 下にセルを追加
+  * `x` : セルを削除
+することができるので, 自分でコードを書いて試してみたい, AIに質問をしたい場合 (詳細以下) などに適宜利用されたい
+
+"""
+
+""" md
 
 # Wisteria上の演習で一度だけやっておくべき作業
 
@@ -333,7 +344,7 @@ for path in ta_paths:
   if path not in sys.path:
     sys.path.append(path)
 from heytutor import hey, I, C, R, D, config
-import openmp_tutor
+import openmp_cfg
 """ """
 
 """ md
@@ -345,13 +356,97 @@ import openmp_tutor
 * C("omp for") ... あるトピックに関するコーディング問題を出題
 * R("omp for") ... あるトピックに関するリーディング問題を出題
 
-以下のどれかのコメント # を外して実行してみよ
+以下のコメント # を外していくつか実行してみよ
 """
 
 """ code w """
+# 自由質問
 # hey("omp parallelの文法を教えて")
+""" """
+
+""" code w """
+# 説明
 # I("reduction句")
+""" """
+
+""" code w """
+# コーディング問題
 # C("omp for")
+""" """
+
+""" code w """
+# リーディング問題
 # R("omp for")
+""" """
+
+""" code w """
+# デバッグ問題
+# R("omp for")
+""" """
+
+""" md
+
+* Pythonセルの先頭に `%%hey_` 書いて実行するとそのセルの内容をAIに送る
+* コードを見せて間違いを教えてもらう, フィードバックをもらうなどしたいときに使うとよい
+
+"""
+
+""" code w """
+%%hey_
+
+正しい答えが出ないんだけどなぜ?
+
+#include <stdio.h>
+#include <stdlib.h>
+
+double int_inv_1_x2(double a, double b, long n) {
+  double s = 0.0;
+  double dx = (b - a) / (double)n;
+#pragma omp parallel for
+  for (long i = 0; i < n; i++) {
+    double x = a + i * dx;
+    s += 1 / (1 + x * x);
+  }
+  return s * dx;
+}
+
+int main(int argc, char ** argv) {
+  double a = (argc > 1 ? atof(argv[1]) : 0.0);
+  double b = (argc > 2 ? atof(argv[2]) : 1.0);
+  long n   = (argc > 3 ? atol(argv[3]) : 1000L * 1000L * 1000L);
+  double s = int_inv_1_x2(a, b, n);
+  printf("s = %f\n", s);
+  return 0;
+}
+
+""" """
+
+""" code w """
+%%hey_
+
+Fortran版を作って
+
+#include <stdio.h>
+#include <stdlib.h>
+
+double int_inv_1_x2(double a, double b, long n) {
+  double s = 0.0;
+  double dx = (b - a) / (double)n;
+#pragma omp parallel for
+  for (long i = 0; i < n; i++) {
+    double x = a + i * dx;
+    s += 1 / (1 + x * x);
+  }
+  return s * dx;
+}
+
+int main(int argc, char ** argv) {
+  double a = (argc > 1 ? atof(argv[1]) : 0.0);
+  double b = (argc > 2 ? atof(argv[2]) : 1.0);
+  long n   = (argc > 3 ? atol(argv[3]) : 1000L * 1000L * 1000L);
+  double s = int_inv_1_x2(a, b, n);
+  printf("s = %f\n", s);
+  return 0;
+}
 
 """ """
