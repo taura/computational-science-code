@@ -70,7 +70,7 @@ which fccpx
 
 """ md
 
-## ジョブ投入を簡便に行うスクリプト
+## ジョブ投入を簡便に行う設定
 
 """
 
@@ -80,6 +80,70 @@ submit_path = "/work/gt47/share/taura/computational-science-code/00submit"
 if submit_path not in sys.path:
     sys.path.append(submit_path)
 import submit
+""" """
+
+""" md
+
+# AIチューター設定
+
+* <font color="red">ただし 2025/07/06 10:00AM 現在, 実際に質問をすると</font>
+```
+AttributeError: module 'openai' has no attribute 'AzureOpenAI'
+```
+<font color="red">というエラーが出てしまう(対応お願い中). 授業時間までに直っていることを期待(直らなくても授業後に直ることを期待)</font>
+
+"""
+
+""" code """
+import sys
+ta_paths = ["/work/gt47/share/taura/ai-tutor-hey",
+            "/work/gt47/share/taura/ai-tutor-hey/ex",
+            "/work/opt/local/x86_64/cores/openai/lib/python3.9/site-packages"]
+for path in ta_paths:
+  if path not in sys.path:
+    sys.path.insert(0, path)
+from heytutor import hey, I, C, R, D, config
+import openmp_cfg
+""" """
+
+""" md
+
+## 質問例
+
+* `hey, I, C, R, D` という5つの関数で質問ができる
+* `hey` は ChatGPT に投げているのとほぼ同じ意味
+
+* hey("omp parallelの文法を教えて") ... 自由な質問
+  * Pythonセルの先頭に `%%hey_` と書いて実行するとそのセルの内容を `hey`に渡すのと同じ
+* I("collapse句") ... あるトピックについて説明
+* C("reduction句") ... あるトピックに関するコーディング問題を出題
+* R("omp for") ... あるトピックに関するリーディング問題を出題
+* D("omp target") ... あるトピックに関するデバッグ問題を出題
+
+* 質問例
+"""
+
+""" code w """
+# 自由質問
+# hey("omp parallelの文法を教えて")
+""" """
+
+""" code w """
+%%hey_
+
+// どこが間違い?
+
+double int_inv_1_x2(double a, double b, long n) {
+  double s = 0.0;
+  double dx = (b - a) / (double)n;
+#pragma omp parallel for
+  for (long i = 0; i < n; i++) {
+    double x = a + i * dx;
+    s += 1 / (1 + x * x);
+  }
+  return s * dx;
+}
+
 """ """
 
 """ md

@@ -333,11 +333,14 @@ uptime
 # AIチューター
 
 * Jupyter環境から言語仕様やコードについての質問ができるAIチュータを組み込んでいる
-* <font color="red">ただし 2025/07/06 10:00AM 現在, 実際に質問をすると
+* <font color="red">ただし 2025/07/06 10:00AM 現在, 実際に質問をすると</font>
 ```
 AttributeError: module 'openai' has no attribute 'AzureOpenAI'
 ```
-というエラーが出てしまう(対応お願い中). 授業時間までに直っていることを期待(直らなくても授業後に直ることを期待)</font>
+<font color="red">というエラーが出てしまう(対応お願い中). 授業時間までに直っていることを期待(直らなくても授業後に直ることを期待)</font>
+* 安易に何でもAIに聞いて済ませるのがよいわけではないが, あらゆる角度から質問でき, すぐに答えが返ってくるのがAIの利点なので活用されたい
+  * よくない質問の仕方: 「この(演習)問題の答え教えて」
+  * よい質問の仕方: 「◯◯について基本から教えて」「C言語で ... は何のこと?」etc.
 
 ## 設定
 
@@ -346,10 +349,11 @@ AttributeError: module 'openai' has no attribute 'AzureOpenAI'
 """ code """
 import sys
 ta_paths = ["/work/gt47/share/taura/ai-tutor-hey",
-            "/work/gt47/share/taura/ai-tutor-hey/ex"]
+            "/work/gt47/share/taura/ai-tutor-hey/ex",
+            "/work/opt/local/x86_64/cores/openai/lib/python3.9/site-packages"]
 for path in ta_paths:
   if path not in sys.path:
-    sys.path.append(path)
+    sys.path.insert(0, path)
 from heytutor import hey, I, C, R, D, config
 import openmp_cfg
 """ """
@@ -358,7 +362,7 @@ import openmp_cfg
 
 ## 質問例
 
-* `hey, I, C, R` という4つの関数で質問ができる
+* `hey, I, C, R, D` という5つの関数で質問ができる
 * `hey` は ChatGPT に投げているのとほぼ同じ意味
 
 * hey("omp parallelの文法を教えて") ... 自由な質問
