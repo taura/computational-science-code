@@ -109,6 +109,10 @@ def submit_cell(line, cell):
 
 @register_cell_magic
 def bash_submit(line, cell):
+    return submit_cell(line, cell)
+
+@register_cell_magic
+def bash_submit_a(line, cell):
     opt = """
 #PJM -L rscgrp=lecture-a
 #PJM -L elapse=0:01:00
@@ -133,7 +137,3 @@ def bash_submit_o(line, cell):
 """
     return submit_cell(line, opt + cell)
 
-@register_cell_magic
-def bash_submit_(line, cell):
-    opt = ""
-    return submit_cell(line, opt + cell)

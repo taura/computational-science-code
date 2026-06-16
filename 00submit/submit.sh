@@ -1,13 +1,15 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -L rscgrp=lecture7-o
+#PJM -L rscgrp=lecture9-o
 #xxxxPJM -L rscgrp=lecture-o
+#xxxxPJM -L rscgrp=lecture9-a
+#xxxxPJM -L rscgrp=lecture-a
 #PJM -L node=1
 #xxxxPJM -L gpu=1
 #PJM --mpi proc=1
 #PJM --omp thread=1
 #PJM -L elapse=0:01:00
-#PJM -g gt47
+#PJM -g gt69
 #PJM -j
 #PJM -o 0done.txt
 done_txt=0done.txt
