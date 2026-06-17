@@ -1,7 +1,8 @@
 #
 # compile
 #
-#mk_nb_flags := --dbg 2
+mk_nb_flags := --syntax wisteria
+#mk_nb_flags := --dbg 2 --syntax wisteria
 
 nb_srcs :=
 nb_srcs += $(wildcard nb/source/cs0?/*.py)

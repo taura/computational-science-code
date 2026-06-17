@@ -224,11 +224,7 @@ git clone https://github.com/taura/computational-science-code.git
 """
 
 """ code """
-import sys
-submit_path = "/work/gt47/share/taura/computational-science-code/00submit"
-if submit_path not in sys.path:
-    sys.path.append(submit_path)
-import submit
+import wisteria_submit
 """ """
 
 """ md
