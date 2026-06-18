@@ -1,0 +1,16 @@
+# エディタのバックアップ
+*~
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# コンパイル生成物 (コンパイラやセル実行で生じる)
+*.o
+*.mod
+*.exe
+*.s
+*.ll
