@@ -2,7 +2,7 @@
 in_dir := nb/source
 out_dir := notebooks/source
 langs := cpp f90
-nn_topics := $(patsubst $(in_dir)/%,%,$(wildcard $(in_dir)/01_*))
+nn_topics := $(patsubst $(in_dir)/%,%,$(wildcard $(in_dir)/[0-9][0-9]_*))
 
 deploy :
 
@@ -32,8 +32,9 @@ endef
 define deploy_topic
 deploy : $(out_dir)/$(nn_topic)/$(topic).ipynb
 $(out_dir)/$(nn_topic)/$(topic).ipynb : $(out_dir)/$(nn_topic)/dir
+# topic .py は {var} 置換を使わない (本文に素の波括弧を含む) ので mk_nb に直接渡す
 $(out_dir)/$(nn_topic)/$(topic).ipynb :  $(in_dir)/$(nn_topic)/$(topic).py
-	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) $$< | ./mk_nb.py --syntax wisteria - > $$@
+	./mk_nb.py --syntax wisteria $$< > $$@
 
 $(out_dir)/$(nn_topic)/dir :
 	mkdir -p $$@
@@ -51,10 +52,10 @@ $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).py
 	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) $$< | ./mk_nb.py --syntax wisteria - > $$@
 
-# problem.md -> copy
+# problem.md -> copy (内容なのでそのままコピー. コード中の波括弧を format しないこと)
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/dir
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md
-	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) $$< > $$@
+	cp $$< $$@
 
 # mkdir
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/dir : 
@@ -66,8 +67,8 @@ endef
 # nb/source/01_intro/problems/00_average/average.{cpp,f90} -> notebooks/source/01_intro/problems/00_average/average.{cpp,f90}
 define deploy_code
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang)
-$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang)
-	cp $$< $$@
+$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) strip_answer.py
+	./strip_answer.py $$< > $$@
 endef
 
 EVAL=$(eval $(1))
