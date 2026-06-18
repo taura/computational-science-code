@@ -1,0 +1,905 @@
+""" md 
+
+#* 高性能プログラミングと性能測定(2) --- OpenMP GPUプログラミング
+
+"""
+
+""" md 
+
+# OpenMP の GPU 向け拡張
+
+* OpenMPの最近の仕様ではGPUもサポートしている(どこまでサポートしているかはコンパイラ依存)
+
+* 詳しい仕様が知りたくなったら https://openmp.org/ を参照
+  * 最新仕様 https://www.openmp.org/spec-html/5.2/openmp.html
+  * 簡潔な文法のリファレンス: https://www.openmp.org/resources/refguides/
+* 最小限の覚えるべきキーワード
+  * 既出: マルチコアCPUでも必要だったもの
+    * `#pragma omp parallel`
+    * `#pragma omp for` 
+    * `reduction`
+  * 今回: GPUで必要になるもの --- どれも「実は」マルチコアCPUでも使える. マルチコアCPUだけを使う分には不要
+    * `#pragma omp target` (実行をGPUに移動)
+    * `#pragma omp teams` ($\approx$ `parallel`)
+    * `#pragma omp distribute` ($\approx$ `for`)
+    * `#pragma omp loop` ($\approx$ `for`, `distribute`)
+
+* 最小限の覚えるべきAPI関数
+```
+#include <omp.h> 
+```
+して
+  * 既出: マルチコアCPUでも必要だったもの
+    * omp_get_num_threads();
+    * omp_get_thread_num();
+  * 今回: GPUで必要になるもの
+    * omp_get_num_teamss();
+    * omp_get_team_num();
+
+* うまくするとCPUとGPUで同じソースコードで動くプログラムを書くことも可能
+
+* 有益なスライド
+  * [Swaroop Pophale](https://www.olcf.ornl.gov/wp-content/uploads/2021/08/ITOpenMP_Day1.pdf)
+  * [Jeff Larkin](https://openmpcon.org/wp-content/uploads/openmpcon2021-nvidia.pdf)
+
+"""
+
+""" md
+# 環境設定
+
+* Jupyter上でコンパイラを起動する, およびジョブ投入を簡便にするための設定
+* これは各Jupyterノートブックごとに行う
+* 同じノートブックでもログアウトしたりカーネルを再スタートしたときなどは失われるのでそのたびに行うこと
+
+## コンパイラ
+
+* Aquariusでは, 同じコンパイラでCPUもGPUもサポートしているという理由で, NVIDIA HPC SDKを使う
+  * コマンド名:
+    * C: `nvc`
+    * C++: `nvc++`
+  * コンパイルオプション:
+    * `-mp=multicore` をつけると CPU用のOpenMPがサポートされる
+    * `-mp=gpu` をつけると GPU用のOpenMPがサポートされる
+* Odysseyでは, 富士通コンパイラを使う
+  * コマンド名:
+    * C: `fccpx`
+    * C++: `FCCpx`
+  * コンパイルオプション:
+    * `-Kopenmp` をつけると CPU用のOpenMPがサポートされる
+* 上記のコマンドを実行できるようにするために, 以下を実行する
+  * なお以下はコマンドライン端末上では `module load nvidia`, `module load fj` とするのが本来のやり方だがJupyter上で`module`コマンドが動かないのでやむなく以下のようにする
+"""
+
+""" code w """
+import os
+paths = os.environ["PATH"].split(":")
+nvc_path = "/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin"
+fj_path = "/opt/FJSVxtclanga/tcsds-1.2.41/bin"
+for path in [nvc_path, fj_path]:
+    if path not in paths:
+        paths = [path] + paths
+os.environ["PATH"] = ":".join(paths)
+""" """
+
+""" md
+* 以下でコンパイラのパス名が fccpx is ..., nvc is ..., のように無事表示されれば成功
+"""
+
+""" code w """
+%%bash
+which nvc
+which fccpx
+""" """
+
+""" md
+
+## ジョブ投入を簡便に行う設定
+
+"""
+
+""" code """
+import wisteria_submit
+""" """
+
+""" md
+
+# AIチューター
+
+"""
+
+""" code """
+import heytutor
+""" """
+
+""" md 
+# 重要な pragma
+
+* [`#pragma omp target`](https://www.openmp.org/spec-html/5.0/openmpsu60.html#x86-2820002.12.5) : 実行を **デバイス(GPU)** に移す
+* [`#pragma omp teams`](https://www.openmp.org/spec-html/5.0/openmpse15.html#x57-910002.7) : デバイス上に**チーム**を多数作成する ($\approx$ `#pragma omp parallel`)
+* [`#pragma omp distribute`](https://www.openmp.org/spec-html/5.0/openmpsu43.html#x66-1580002.9.4) : 繰り返しをチーム間で分割実行する ($\approx$ `#pragma omp for`)
+* [`#pragma omp parallel`](https://www.openmp.org/spec-html/5.0/openmpse14.html#x54-800002.6) : チーム内に**スレッド**を多数作成する
+* [`#pragma omp for`](https://www.openmp.org/spec-html/5.0/openmpsu41.html#x64-1290002.9.2) : 繰り返しをチームのスレッドに分割実行する
+* [`#pragma omp target data`](https://www.openmp.org/spec-html/5.0/openmpsu57.html#x83-2580002.12.2) : ホストCPUとデバイス(GPU)間のデータをマッピングする
+
+"""
+
+""" md 
+
+# [`#pragma omp target`](https://www.openmp.org/spec-html/5.0/openmpsu60.html) $\sim$ 実行をデバイス(GPU)に移す
+
+* <font color="blue">構文</font>
+```
+#pragma omp target
+    S
+```
+* $S$は文 (以降いちいち断らない)
+* $S$ をデバイス (通常はGPU) で実行 (にオフロード) する 
+"""
+
+""" code w """
+%%writefile omp_target.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_target.c """
+""" """
+
+""" md 
+* コンパイル
+"""
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_target.c -o omp_target_gpu.exe
+""" """
+
+""" md 
+
+* ログインノードで実行
+"""
+
+""" code w """
+%%bash
+./omp_target_gpu.exe
+""" """
+
+""" md 
+
+* 注:
+  * `target` は通常GPUを使用することを意図して使うが、実際にはGPUがなくても実行できる (CPUにフォールバック実行)
+  * 上記のプログラムを実行すると、マシンにGPUがあるかどうかに関係なく同じ結果が得られる
+    * `printf` はどちらで実行しても同じなので当然
+  * プログラムの移植性のためには良いが、GPUで実行しているつもりが実はCPUなどということがあるとかえって混乱を招く可能性がある
+  * GPUが利用できなければエラーを発生させることもできる. それには、環境変数 `OMP_TARGET_OFFLOAD=MANDATORY` を設定する。逆に、`OMP_TARGET_OFFLOAD=DISABLED` はその反対の効果を持つ
+
+* 以下はログインノードで (`%%bash` で) 実行するとエラーになる (ログインノードにGPUがないため)
+"""
+
+""" code w """
+%%bash_submit
+# GPUで実行することを強制. できなければエラー
+OMP_TARGET_OFFLOAD=MANDATORY ./omp_target_gpu.exe
+""" """
+
+""" md 
+* 以下は計算ノードのCPU上で実行する
+"""
+
+""" code w """
+%%bash_submit
+# ホストで実行することを強制
+OMP_TARGET_OFFLOAD=DISABLED ./omp_target_gpu.exe
+""" """
+
+""" md 
+
+# [`#pragma omp teams`](https://www.openmp.org/spec-html/5.0/openmpse15.html#x57-910002.7) $\sim$ チームの作成
+
+## 基本
+
+* <font color="blue">構文</font>
+```
+#pragma omp target
+#pragma omp teams
+    S
+```
+複数のチームを作成し, 各チームの*マスター*が $S$ を実行する
+
+* `#pragma omp parallel` に似ており, 多くのスレッドが同じ文を実行する効果を持つ
+* `teams` は `parallel` の外側にある追加の並列化レイヤーと考えればよい
+  * `teams` はチームを多数作る
+  * `parallel` は各チーム内でスレッドを多数作る
+* 実はマルチコアCPUでは初めからチームがひとつできており, そのマスターが `main` 関数を実行するスレッドだったと考えれば良い
+
+"""
+
+""" code w """
+%%writefile omp_teams.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_teams.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_teams.c -o omp_teams_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_teams_gpu.exe
+""" """
+
+""" md 
+
+* 注:
+  * `teams` は `target` のすぐ内側に現れる必要がある
+  * そのため実際, `target` と `teams` はしばしば一行で使用される (`#pragma omp target teams`)
+  * つまり次の形が普通
+
+"""
+
+""" code w """
+%%writefile omp_target_teams.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_target_teams.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_target_teams.c -o omp_target_teams_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_target_teams_gpu.exe
+""" """
+
+""" md 
+## チームの数を指定する
+
+* `teams` 構文で作成されるチームの数を $x$ に設定するには, 以下のいずれかの方法がある
+  * `teams` 構文に `num_teams(x)` を追加 (`parallel` 構文の `num_threads` と類似)
+  * コマンド実行時に `OMP_NUM_TEAMS=x` 環境変数を設定 (`OMP_NUM_THREADS` と類似)
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 ./omp_teams_gpu.exe
+""" """
+
+""" md 
+* 上記の3を色々変えて実行してみよ
+"""
+
+
+""" md 
+
+## チームIDとチーム数の取得
+
+* `omp_get_thread_num()` と `omp_get_num_threads()` がスレッドIDとスレッド数を取得するのと同様に, チームIDとチーム数を取得できる
+  * `omp_get_team_num()`
+  * `omp_get_num_teams()` 
+"""
+
+""" code w """
+%%writefile omp_team_num.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_team_num.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_team_num.c -o omp_team_num_gpu.exe
+""" """
+
+""" md 
+
+* 実行
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=5 ./omp_team_num_gpu.exe
+""" """
+
+""" md 
+
+* `OMP_NUM_TEAMS` を設定せずに実行
+"""
+
+""" code w """
+%%bash_submit
+./omp_team_num_gpu.exe
+""" """
+
+""" md 
+
+* 108のチームが作られる
+* それはこの環境のGPU (NVIDIA A100)に備わる「コア」の数である
+* マルチコア環境で`OMP_NUM_THREADS`を指定せずに`#pragma omp parallel`を実行したときにコア数だけのスレッドが作られるのと似ている
+* なおNVIDIA GPUでは普通のCPUで言うところの「コア」を「Streaming Multiprocessor」と呼ぶ
+* つまり `OMP_NUM_TEAMS` や `num_teams` による指定を省略すると, (仕様上そう定められているかは知らないが普通), Streaming Multiprocessorの数だけのチームが作られる
+* そしてこの環境やWisteriaに搭載されているNVIDIA A100 GPUは108 のStreaming Multiprocessor を備えているということ
+* なおこれは特段驚くような多さではなく, CPUでもサーバー用ではこのくらいのコア数を持つものがある
+
+"""
+
+
+
+""" md 
+
+# [`#pragma omp distribute`](https://www.openmp.org/spec-html/5.0/openmpsu43.html#x66-1580002.9.4) $\sim$ for文の繰り返しをチーム間で分割実行
+
+* <font color="blue">構文</font>
+```
+#pragma omp target
+#pragma omp teams
+    {
+      ...
+#pragma omp distribute
+      for (...) {
+        ...
+      }
+    }
+```
+for文の繰り返しをチームに分配する
+
+* `distribute` の直下に書けるfor文には, `parallel` の下に書けるfor文と同じ制限 (breakできない, など)が有る
+* だいたい,
+  * `#pragma omp teams` $\approx$ `#pragma omp parallel` 
+  * `#pragma omp distribute` $\approx$ `#pragma omp for`
+と思っておけばよい
+
+"""
+
+""" code w """
+%%writefile omp_distribute.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_distribute.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_distribute.c -o omp_distribute_gpu.exe
+""" """
+
+""" md 
+
+* 異なるチーム数とコマンドラインの繰り返し回数で次のコマンドを実行し, その結果を理解せよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 ./omp_distribute_gpu.exe 5
+""" """
+
+""" md 
+
+#*P teams と distribute を理解する
+
+* 後々混乱しないように簡単なクイズ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ ./omp_distribute_gpu.exe $m$</tt></font> で実行したときに, どの行が何スレッドによって実行されるか(何が何回表示されるか)を推測し, その結果, 何行が出力されるかを, 
+* $T$ と $m$ の式で答えよ
+"""
+
+""" md w points=1 
+"""
+
+""" md 
+* 答えを確認するために, 以下のように `wc` コマンドを使用して行数を数えればよい(左端の数字が行数)
+
+* 次のコマンドを異なるチーム数とコマンドラインの繰り返し回数で実行せよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 ./omp_distribute_gpu.exe 5 | wc -l
+""" """
+
+""" md 
+
+* 注:
+  * `teams` と `distribute` の間に何も文がなければ, 1つの指示 (`#pragma omp teams distribute`)で書ける (`parallel` と `for` でできたのと同じ)
+  * `target` と `teams` を結合できた, ということで, 3つを1つの指示に結合できる
+"""
+
+""" code w """
+%%writefile omp_target_teams_distribute.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_target_teams_distribute.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_target_teams_distribute.c -o omp_target_teams_distribute_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 ./omp_target_teams_distribute_gpu.exe 7
+""" """
+
+""" md 
+
+* 見ての通り `teams` と `distribute` だけで `parallel` や `for` を使わずにループを並列化できる
+* それで起こることはGPUの**各コア (Streaming Multiprocessor) で1つ**のスレッドが実行するということである
+* CPUのコアはもともと1つのスレッドを実行するものだがGPUのStreaming Multiprocessorはそうではなく, 1つのコア内に多数のスレッドを実行する能力を持つ(逆に1スレッドの性能はCPUよりも遅い)
+* `parallel` を使用すると各チーム内にスレッドが作られ, 結果的に各Streaming Multiprocessor内で多数のスレッドを動かすことになる
+* 注: CPUは1コア内に1スレッド以上を動かすことはできない代わりに, SIMD命令と, 命令レベル並列性というものを使って**1スレッドの**性能を向上させることができる
+"""
+
+""" md 
+
+# [`#pragma omp parallel`](https://www.openmp.org/spec-html/5.0/openmpse14.html#x54-800002.6) $\sim$ チーム内でのスレッドの作成
+
+## `teams` 内の `parallel`
+
+* 構文:
+```
+#pragma omp target
+#pragma omp teams
+    {
+      ...
+#pragma omp parallel
+      S
+    }
+```
+各チーム内でスレッドを作成する
+
+* `teams` 内で使用すると, **各チーム**内でスレッドを作成し, それぞれが $S$ を実行する
+
+* 例として, <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_team_parallel_gpu.exe</tt></font> は $T$ チームを作成し, それぞれが $H$ スレッドを作成する
+"""
+
+""" code w """
+%%writefile omp_parallel.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_parallel.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_parallel.c -o omp_parallel_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe
+""" """
+
+""" md 
+
+* マルチコアCPUでもスレッドを作成するために `parallel` を使用したことを思い出そう
+* ただし`teams` は不要だった
+* これはマルチコアCPU環境では, 全体が一つのチームだったと考えれば辻褄が合う
+* 実はCPUであっても, `#pragma target teams` をつけても害はない
+* 1つチームが作られ, その後`#pragma omp parallel`でその一つのチーム内にスレッドが作られるという動作になる
+
+* <font color="red">重要な注意1: GPUではOMP_NUM_THREADS は効き目がない</font>模様
+  * CPUでは, `parallel` によって作成されるスレッド数は `OMP_NUM_THREADS=x` 環境変数や `parallel` 指令の `num_threads(x)` で指定できた
+  * しかし, GPUで実行する場合はこれができない模様 (実装の問題か仕様の問題かは不明)
+  * 設定する必要がある場合は, `num_threads(x)` を使用する必要がある
+    * 上記のプログラムでは環境変数を(`getenv`で)読んで`num_threads(x)` に渡している
+  * または省略してシステムに任せる
+* <font color="red">重要な注意2: スレッド数は32の倍数でなければならない</font>模様
+  * 詳しくは省略するがGPUのハードウェアの仕組み(32スレッドからなるwarpという単位で同時に実行する)を考えると頷ける動作
+  * そうでない数を設定してもエラーも発生しないため, くれぐれも誤った数を指定しないように注意する必要がある
+  * 特に必要ない限りシステムに任せるのが無難
+
+"""
+
+""" md 
+
+#*P teamsとparallelを理解する
+
+* `teams`と`parallel`の組み合わせに関するクイズ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_parallel_gpu.exe</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを表現します
+* 答えを $T$ と $H$ の式で答えよ
+"""
+
+""" md w points=1 
+"""
+
+""" md 
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_parallel_gpu.exe | wc -l
+""" """
+
+""" md 
+
+## `teams` 内の `distribute` 内の `parallel`
+
+* 典型的には, `parallel` は `distribute` 内 (必然的に `teams` 内) で呼び出す
+* 以下は構文的には新しいことは何もない
+
+"""
+
+""" code w """
+%%writefile omp_distribute_parallel.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_distribute_parallel.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_distribute_parallel.c -o omp_distribute_parallel_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_distribute_parallel_gpu.exe 5
+""" """
+
+""" md 
+
+#*P teams, distribute, parallelを理解する
+
+* team, distribute, parallelの組み合わせに関するクイズ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_distribute_parallel_gpu.exe $m$</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを式で表せ
+* $T$, $H$, $m$ の式で答えよ
+"""
+
+""" md w points=1 
+"""
+
+""" md 
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_distribute_parallel_gpu.exe 5 | wc -l
+""" """
+
+""" md 
+
+# [`#pragma omp for`](https://www.openmp.org/spec-html/5.0/openmpsu41.html#x64-1290002.9.2) $\sim$ for文の繰り返しをスレッド間で分割実行
+
+* 構文:
+```
+#pragma omp target
+#pragma omp teams
+    ...
+#pragma omp distribute
+#pragma omp parallel
+    ...
+#pragma omp for
+for (...) {
+    ...
+}  
+```
+
+* `parallel` 内で使用されると, ループの繰り返しをスレッドに分配する
+
+"""
+
+""" code w """
+%%writefile omp_for.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_for.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_for.c -o omp_for_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6
+""" """
+
+""" md 
+
+#*P teams, distributed, paralle, for を理解する
+
+* teams, distributed, paralle, for の組み合わせに関するクイズ
+* 上記のプログラムを <font color="blue"><tt>OMP_NUM_TEAMS=$T$ OMP_NUM_THREADS=$H$ ./omp_for_gpu.exe $m$ $n$</tt></font> で実行したときに, どの行が何スレッドによって実行されるかを推測し, その結果, 何行が出力されるかを式で洗わせ
+* $T$, $H$, $m$, $n$ の式で表せ
+* 答えを簡単に確認するために, `wc` コマンドを使用して行数を数えよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=3 OMP_NUM_THREADS=32 ./omp_for_gpu.exe 5 6 | wc -l
+""" """
+
+""" md 
+
+# よく出てくるディレクティブの結合
+
+* 論理的な一貫性のない多くの異なる指示の名前にうんざりすることだろう
+* それぞれは名目上は独立した指示ですが, 実際にはほとんど常に一緒に使用される
+* 多くの場合, 目的はループを並列に実行することなので, 以下の形式のいずれかで使用されることが多い
+
+1\. すべてを結合
+```
+#pragma omp target teams distribute parallel for
+    for (...) {
+      ...
+    }
+```
+2\. 外側のループを `teams` と `distribute` で並列化し, 内側のループを `parallel` と `for` で並列化する
+
+```
+#pragma omp target teams distribute
+    for (...) {
+#pragma omp parallel for
+      for (...) {
+        ...
+      }
+    }  
+```
+
+"""
+
+""" md 
+
+# [`#pragma omp target data`](https://www.openmp.org/spec-html/5.0/openmpsu57.html#x83-2580002.12.2) $\sim$ ホストCPUとGPU間のデータをマッピングする
+
+* GPUはCPUと異なるメモリを持っていて, (CPU内のコアと異なり)メモリをハードウェア的に共有しているわけではない(実は最近この事情は変わりつつあるが, 少なくともこの環境やWisteriaはそうではない)
+* したがってある計算をGPU上で行おうと思ったら一般にはその計算が必要とするデータをGPUに送ってから実行する必要がある
+* 逆にGPU上で得た結果をCPUで使いたければ, GPUが計算した結果をCPUに送る必要がある
+* `target data` とその `map` 節は, それらのデータ転送を手軽に行う指示である
+
+* <font color="red">警告：</font> [仕様書](https://www.openmp.org/spec-html/5.0/openmpsu109.html#x142-6180002.19.7)は法律のようなわかりにくさ
+* 以下はより直截で, 普通の日本語で説明を試みているが, 一部は仕様書で裏を取らず, 実際の実験や実装が行っているであろうことの想像に基づいて書かれている
+
+* <font color="blue">構文：</font>
+```
+#pragma omp target data map(to: ...) map(from: ...) map(tofrom: ...) ...
+    S
+```
+ここで, ... は変数, 配列名, または基底アドレス + 範囲 (例: a[0:n])など
+
+* これらの節は指定された変数, 配列, またはアドレス範囲が $S$ の間または後に「期待される」値を持つという効果をもたらす
+* より具体的には, 
+  * `map(to: ...)` に指定されたものは $S$ の間GPU上で有効になります
+  * `map(from: ...)` に指定されたものは $S$ の後CPU上で有効になります
+* これを達成するために, 実行時システムによってCPUアドレスとGPUアドレス間の <font color="blue">_マッピング_</font> が維持され, 必要に応じて内容がCPU-GPU間で移動する(コピーされる)
+  * `map(to: ...)` に指定されたデータは $S$ の前に必要ならばGPUにコピーされる (CPU -> GPU)
+  * `map(from: ...)` に指定されたデータは $S$ の後に必要ならばGPUからコピーされる (GPU -> CPU)
+  * `map(tofrom: ...)` は両方の効果を持つ
+* `map` 節を指定しなくても同じ効果を持つこともある(が, どういうときにそうなるかを仕様書から理解しようとするよりも, 指定するほうが早い)
+
+* 通常, このディレクティブは `#pragma omp target` と一緒に使用され, 実際にこれらの節を `#pragma omp target` に指定することもできる
+
+"""
+
+""" md 
+
+## ローカル変数と配列
+
+* 以下のプログラムを実行してどの変数がGPUで利用可能か観察せよ
+
+"""
+
+""" code w """
+%%writefile omp_map_local.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_map_local.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_map_local.c -o omp_map_local_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_map_local_gpu.exe
+""" """
+
+""" md 
+
+#*P `map(from: ..)` または `map(tofrom: ..)` の利用
+
+* CPUがすべての結果(`t, a, p`にGPUが書き込んだ値)を取得(正しく表示)できるよう, 適切な `map` 節を追加せよ
+
+"""
+
+""" code w """
+%%writefile omp_map_local.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_map_local.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_map_local.c -o omp_map_local_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_map_local_gpu.exe
+""" """
+
+""" md 
+
+## グローバル変数と配列
+
+* 先と同様, 以下のプログラムを実行してどの変数がGPUで利用可能か観察せよ
+
+"""
+
+""" code w """
+%%writefile omp_map_global.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_map_global.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_map_global.c -o omp_map_global_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_map_global_gpu.exe
+""" """
+
+""" md 
+
+#*P `map(from: ..)` または `map(tofrom: ..)` の利用
+
+* CPUがすべての結果(`t, a, p`にGPUが書き込んだ値)を取得(正しく表示)できるよう, 適切な `map` 節を追加せよ
+
+"""
+
+""" code w """
+%%writefile omp_map_global.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_map_global.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_map_global.c -o omp_map_global_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+./omp_map_global_gpu.exe
+""" """
+
+
+
+
+
+
+""" md 
+
+# 台数効果の目撃
+
+* CPUのときと同様, スレッド数(+ チーム数)を増やして性能向上を確認しよう
+
+"""
+
+""" code w """
+%%writefile omp_speedup.c
+""" include nb/source/cs02/include/omp_speedup.c """
+""" """
+
+""" code w """
+%%bash
+nvc -fast -mp=gpu omp_speedup.c -o omp_speedup_gpu.exe
+""" """
+
+""" md 
+```
+OMP_NUM_TEAMS=nteams OMP_NUM_THREADS=nthreads ./omp_speedup_gpu.exe m n
+```
+* とすると, チーム数=`nteams`, スレッド数=`nthreads` で実行する
+* `m`, `n` は省略すると, `m` = `nteams` $\times$ `nthreads` とする
+* まず, `nteams=1` として, `nthreads` だけを変えて, 性能向上を確認せよ
+* `OMP_NUM_THREADS` は1でなければ, 32の倍数でないといけないことに注意
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=1 OMP_NUM_THREADS=1 ./omp_speedup_gpu.exe
+""" """
+
+""" md 
+* 手動でやるのが嫌になったら以下で一撃で実行
+"""
+
+""" code w """
+%%bash_submit
+for th in 1 32 64 適切なスレッド数 ; do
+    echo -n "$th "
+    OMP_NUM_TEAMS=1 OMP_NUM_THREADS=${th} ./omp_speedup_gpu.exe | grep GFLOPS
+done
+""" """
+
+""" md 
+* 結果を以下で可視化 (上の結果をコピペせよ)
+"""
+
+""" code w """
+""" include nb/source/cs01/include/speedup.py """
+""" """
+
+""" md 
+* 次に, スレッド数を上記で性能が頭打ちになった値で固定した上で以下の`OMP_NUM_TEAMS=1`を色々変えて実行せよ
+"""
+
+""" code w """
+%%bash_submit
+OMP_NUM_TEAMS=1 OMP_NUM_THREADS=最適なスレッド数 ./omp_speedup_gpu.exe
+""" """
+
+""" md 
+* 手動でやるのが嫌になったら以下で一撃で実行
+"""
+
+""" code w """
+%%bash_submit
+th=最適なスレッド数
+for tm in 1 2 3 適切なチーム数 ; do
+    echo -n "$((tm * th)) "
+    OMP_NUM_TEAMS=${tm} OMP_NUM_THREADS=${th} ./omp_speedup_gpu.exe | grep GFLOPS
+done
+""" """
+
+""" md 
+* 結果を以下で可視化 (上の結果をコピペせよ)
+"""
+
+""" code w """
+""" include nb/source/cs01/include/speedup.py """
+""" """
+
+
+
+<!--- eof --->
+
+
+""" md 
+
+#*P OpenMPを使用してGPU上で配列の合計を取得
+
+* 次のコードは, 配列を初期化し, 要素の合計を計算するCPUのみの逐次コード
+* 配列の合計をGPUで計算するために適切なompディレクティブを追加せよ
+* すべての要素は1で初期化されているため, 結果が予測しやすいですが, もちろんそれを仮定してはいけない
+* OpenMPを使用しているため, CPUコンテキストで既に学んだ多くの機能がそのまま機能します (例: reduction)
+* ヒント:
+  * すべてを機能させるために1行追加するだけです
+* チーム数 (`OMP_NUM_TEAMS`) を変更してパフォーマンスがどのように影響するかを確認せよ
+
+"""
+
+""" code w """
+%%writefile omp_gpu_sum.c
+""" exec-include ./mk_version.py -D VER=1 nb/source/cs02/include/omp_gpu_sum.c """
+""" """
+
+""" code w """
+%%bash
+nvc -mp=gpu omp_gpu_sum.c -o omp_gpu_sum_gpu.exe
+""" """
+
+""" md 
+
+* 注: この実験では, GPUで実行することで処理が速くなることは期待できない
+* 単に, GPUで実行されていることを確認するためのもの
+* そのために次を試せ
+  * `OMP_TARGET_OFFLOAD=MANDATORY` と `OMP_TARGET_OFFLOAD=DISABLED` の比較
+  * `OMP_NUM_TEAMS` を変更して, パフォーマンスがCPUとGPU, および大きなチーム数と小規模なチーム数でどのように変わるかを確認
+
+"""
+
+""" code w """
+%%bash_submit
+# GPUで実行
+OMP_TARGET_OFFLOAD=MANDATORY ./omp_gpu_sum_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+# CPUで実行
+OMP_TARGET_OFFLOAD=DISABLED ./omp_gpu_sum_gpu.exe
+""" """
+
+""" code w """
+%%bash_submit
+# いろいろなチーム数で実行(OMP_NUM_TEAMS=1を変更)
+OMP_TARGET_OFFLOAD=MANDATORY OMP_NUM_TEAMS=1 ./omp_gpu_sum_gpu.exe
+""" """
+
+
+
+
+
+
+
+
