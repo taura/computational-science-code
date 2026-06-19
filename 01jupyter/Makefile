@@ -4,6 +4,11 @@ out_dir := notebooks/source
 langs := cpp f90
 nn_topics := $(patsubst $(in_dir)/%,%,$(wildcard $(in_dir)/[0-9][0-9]_*))
 
+# GPU トピックは -mp=gpu, それ以外は -mp=multicore でコンパイルする
+# (入門など OpenMP を使わない問題でも -mp=multicore は無害)
+gpu_topics := 07_gpu_target 08_gpu_teams 09_gpu_map 10_gpu_speedup
+mpflag = $(if $(filter $(nn_topic),$(gpu_topics)),-mp=gpu,-mp=multicore)
+
 deploy :
 
 # 01_intro -> intro
@@ -50,7 +55,7 @@ define deploy_problem
 $(out_dir)/$(nn_topic)/$(topic).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).py
-	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) $$< | ./mk_nb.py --syntax wisteria - > $$@
+	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) mpflag=$(mpflag) $$< | ./mk_nb.py --syntax wisteria - > $$@
 
 # problem.md -> copy (内容なのでそのままコピー. コード中の波括弧を format しないこと)
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/dir

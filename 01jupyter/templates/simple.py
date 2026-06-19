@@ -128,7 +128,7 @@ import heytutor
 """ codex w
 %%bash_
 PATH=/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin:/opt/FJSVxtclanga/tcsds-1.2.41/bin:$PATH
-nvc++ -fast {problem}.cpp -o {problem}_cpp.exe
+nvc++ -fast {mpflag} {problem}.cpp -o {problem}_cpp.exe
 """
 
 """ md
@@ -207,7 +207,7 @@ import heytutor
 """ codex w
 %%bash_
 PATH=/work/opt/local/x86_64/cores/nvidia/23.3/Linux_x86_64/23.3/compilers/bin:/opt/FJSVxtclanga/tcsds-1.2.41/bin:$PATH
-nvfortran -fast {problem}.f90 -o {problem}_f90.exe
+nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 """
 
 """ md
