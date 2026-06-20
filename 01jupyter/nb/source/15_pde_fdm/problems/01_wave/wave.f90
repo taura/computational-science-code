@@ -4,9 +4,10 @@
 !   u^{n+1} = 2 u^n - u^{n-1} + coef*(上+下+左+右 - 4*中央)
 ! 時間方向は前後ステップに依存するので逐次, 空間の二重ループを並列化する。
 program wave
+  use omp_lib
   implicit none
   integer :: L, steps, t, i, j
-  real(8) :: coef, c0, sig, r2, v, lap, maxabs, asym, s, a
+  real(8) :: coef, c0, sig, r2, v, lap, maxabs, asym, s, a, t0, elapsed
   real(8), allocatable, target :: arr1(:,:), arr2(:,:), arr3(:,:)
   real(8), pointer :: up(:,:), cu(:,:), nx(:,:), tmp(:,:)
   character(len=32) :: arg
@@ -32,6 +33,7 @@ program wave
      end do
   end do
 
+  t0 = omp_get_wtime()
   do t = 1, steps
      ! 内部の各点を更新 (時間1ステップ進める)
      ! BEGIN ANSWER: 内側の二重ループを !$omp parallel do collapse(2) private(lap) で並列化せよ.
@@ -49,6 +51,7 @@ program wave
      ! up <- cu <- nx と時間を1つ進める (ポインタを回す)
      tmp => up; up => cu; cu => nx; nx => tmp
   end do
+  elapsed = omp_get_wtime() - t0
 
   ! 検算1: 最大振幅。検算2: i<->j 対称性の誤差 (≈0 なら正しい)。
   maxabs = 0.0d0; asym = 0.0d0
@@ -62,4 +65,5 @@ program wave
   end do
   print "(a,i0,a,i0,a,f0.4,a,es9.2,a)", &
        "L=", L, ", steps=", steps, ": 最大振幅=", maxabs, ", 対称性誤差=", asym, " (≈0 なら正しい)"
+  print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program wave

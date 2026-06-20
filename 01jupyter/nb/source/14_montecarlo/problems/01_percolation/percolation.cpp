@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <omp.h>
 
 /* 状態を持たない (カウンタベースの) 乱数: (seed,k) から [0,1) の値を決める純粋関数。
    セル k の開閉を draw_rand01(seed=試行番号, k=セル番号) で決めるので, どのスレッドが
@@ -53,12 +54,15 @@ int main(int argc, char ** argv) {
 
   /* T 回の試行は互いに独立。浸透した回数を数える。
      試行ごとに探索量が違う (浸透すると途中で打ち切る) ので schedule(dynamic) が有効。 */
+  double t0 = omp_get_wtime();
   // BEGIN ANSWER: 各試行は独立。#pragma omp parallel for reduction(+:perc) schedule(dynamic) で並列化・集計せよ.
 #pragma omp parallel for reduction(+:perc) schedule(dynamic)
   // END ANSWER
   for (long t = 0; t < T; t++) {
     perc += one_trial(L, p, t);
   }
+  double elapsed = omp_get_wtime() - t0;
   printf("L=%d, p=%.3f, trials=%ld: 浸透確率 = %.4f\n", L, p, T, (double)perc / T);
+  printf("elapsed = %.3f sec\n", elapsed);
   return 0;
 }

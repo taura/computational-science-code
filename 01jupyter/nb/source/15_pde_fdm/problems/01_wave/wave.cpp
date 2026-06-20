@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <omp.h>
 
 /* 2D 波動方程式 u_tt = c^2 (u_xx + u_yy) を陽解法で時間発展させる。
    L×L の膜。四辺を固定 (u=0) し, 中央に山(ガウス)を置いて波が広がり反射する様子を計算する。
@@ -26,6 +27,7 @@ int main(int argc, char ** argv) {
       cu[i * L + j] = v;
     }
 
+  double t0 = omp_get_wtime();
   for (int t = 0; t < steps; t++) {
     /* 内部の各点を更新 (時間1ステップ進める) */
     // BEGIN ANSWER: 内側の二重ループを #pragma omp parallel for collapse(2) で並列化せよ.
@@ -42,6 +44,7 @@ int main(int argc, char ** argv) {
     /* up <- cu <- nx と時間を1つ進める (ポインタを回す) */
     double * tmp = up; up = cu; cu = nx; nx = tmp;
   }
+  double elapsed = omp_get_wtime() - t0;
 
   /* 検算1: 最大振幅 (発散していなければ O(1) のまま)。
      検算2: 初期条件が i<->j 対称なので, 解も常に対称。max|u[i][j]-u[j][i]| は丸め誤差程度。 */
@@ -55,6 +58,7 @@ int main(int argc, char ** argv) {
     }
   printf("L=%d, steps=%d: 最大振幅=%.4f, 対称性誤差=%.2e (≈0 なら正しい)\n",
          L, steps, maxabs, asym);
+  printf("elapsed = %.3f sec\n", elapsed);
   free(up); free(cu); free(nx);
   return 0;
 }

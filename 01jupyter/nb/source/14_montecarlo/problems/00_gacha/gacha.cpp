@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <omp.h>
 
 /* ── 状態を持たない (カウンタベースの) 乱数: たった1つの純粋関数 ──────────
    draw_rand(seed, k, N) は 0..N-1 の整数を返す。
@@ -39,6 +40,7 @@ int main(int argc, char ** argv) {
   long long total = 0, totalsq = 0;
 
   /* T 回の試行は互いに独立。各試行の引き回数を集計する。 */
+  double t0 = omp_get_wtime();
   // BEGIN ANSWER: 各試行は独立なので #pragma omp parallel for reduction(+:total,totalsq) で並列化・集計せよ.
 #pragma omp parallel for reduction(+:total,totalsq)
   // END ANSWER
@@ -47,6 +49,7 @@ int main(int argc, char ** argv) {
     total   += d;
     totalsq += (long long)d * d;
   }
+  double elapsed = omp_get_wtime() - t0;
 
   double mean = (double)total / T;
   double var  = (double)totalsq / T - mean * mean;
@@ -55,5 +58,6 @@ int main(int argc, char ** argv) {
   for (int k = 1; k <= N; k++) H += 1.0 / k;
   printf("N=%d, trials=%ld: 平均 %.3f 回 (理論 %.3f), 標準偏差 %.3f\n",
          N, T, mean, N * H, sqrt(var));
+  printf("elapsed = %.3f sec\n", elapsed);
   return 0;
 }

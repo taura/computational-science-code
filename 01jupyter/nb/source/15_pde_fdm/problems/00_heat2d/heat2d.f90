@@ -2,9 +2,10 @@
 ! L×L の板。上端(行0)=100, 残り3辺=0 に固定し, 内部が定常分布に落ち着くまで反復。
 ! 各内部点を上下左右4点の平均で更新する (5点ステンシル)。
 program heat2d
+  use omp_lib
   implicit none
   integer :: L, maxiter, iter, i, j
-  real(8) :: tol, diff, val, v, d
+  real(8) :: tol, diff, val, v, d, t0, elapsed
   real(8), allocatable, target :: a(:,:), b(:,:)
   real(8), pointer :: u(:,:), unew(:,:), tmp(:,:)
   character(len=32) :: arg
@@ -30,6 +31,7 @@ program heat2d
   end do
   u => a; unew => b
 
+  t0 = omp_get_wtime()
   do iter = 1, maxiter
      diff = 0.0d0   ! この反復での最大更新量
      ! 内部の各点 (i,j) を上下左右の平均で更新し, 更新量の最大値を求める。
@@ -51,8 +53,10 @@ program heat2d
      tmp => u; u => unew; unew => tmp
      if (diff < tol) exit
   end do
+  elapsed = omp_get_wtime() - t0
 
   print "(a,i0,a,i0,a,es9.2,a,f0.4,a)", &
        "L=", L, ", iters=", min(iter, maxiter), ", 最終残差=", diff, &
        ", 中心温度=", u(L/2, L/2), " (理論 25.0)"
+  print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program heat2d

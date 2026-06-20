@@ -1,1 +1,1 @@
-../../../../../templates/simple.py
+../../../../../templates/app.py

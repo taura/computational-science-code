@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <omp.h>
 
 /* 2D 定常熱伝導 (ラプラス方程式) をヤコビ反復で解く。
    L×L の板。上端(行0)の温度を 100, 残り3辺を 0 に固定し, 内部が定常分布に
@@ -23,6 +24,7 @@ int main(int argc, char ** argv) {
 
   int iter;
   double diff = 0.0;
+  double t0 = omp_get_wtime();
   for (iter = 0; iter < maxiter; iter++) {
     diff = 0.0;   /* この反復での最大更新量 */
     /* 内部の各点 (i,j) を上下左右の平均で更新し, 更新量の最大値を求める。 */
@@ -40,9 +42,11 @@ int main(int argc, char ** argv) {
     double * tmp = u; u = unew; unew = tmp;
     if (diff < tol) break;
   }
+  double elapsed = omp_get_wtime() - t0;
 
   printf("L=%d, iters=%d, 最終残差=%.2e, 中心温度=%.4f (理論 25.0)\n",
          L, iter + 1, diff, u[(L / 2) * L + (L / 2)]);
+  printf("elapsed = %.3f sec\n", elapsed);
   free(u); free(unew);
   return 0;
 }

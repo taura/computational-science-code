@@ -63,9 +63,10 @@ end module percolation_mod
 
 program percolation
   use percolation_mod
+  use omp_lib
   character(len=32) :: arg
   integer :: L
-  real(8) :: p
+  real(8) :: p, t0, elapsed
   integer(8) :: T, t_, perc
   L = 128
   p = 0.6d0
@@ -83,12 +84,15 @@ program percolation
 
   ! T 回の試行は互いに独立。浸透した回数を数える。
   ! 試行ごとに探索量が違うので schedule(dynamic) が有効。
+  t0 = omp_get_wtime()
   ! TODO: 各試行は独立。!$omp parallel do reduction(+:perc) schedule(dynamic) で並列化・集計せよ.
   do t_ = 0, T - 1
      perc = perc + one_trial(L, p, t_)
   end do
   ! TODO: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  elapsed = omp_get_wtime() - t0
 
   print "(a,i0,a,f0.3,a,i0,a,f0.4)", &
        "L=", L, ", p=", p, ", trials=", T, ": 浸透確率 = ", real(perc, 8) / T
+  print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program percolation

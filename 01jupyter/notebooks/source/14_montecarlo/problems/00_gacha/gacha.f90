@@ -40,10 +40,11 @@ end module gacha_mod
 
 program gacha
   use gacha_mod
+  use omp_lib
   character(len=32) :: arg
   integer :: N, k
   integer(8) :: T, t_, total, totalsq, d
-  real(8) :: mean, var, H
+  real(8) :: mean, var, H, t0, elapsed
   N = 10
   T = 1000000_8
   if (command_argument_count() >= 1) then
@@ -56,6 +57,7 @@ program gacha
   total = 0_8; totalsq = 0_8
 
   ! T 回の試行は互いに独立。各試行の引き回数を集計する。
+  t0 = omp_get_wtime()
   ! TODO: 各試行は独立なので !$omp parallel do reduction(+:total,totalsq) で並列化・集計せよ.
   do t_ = 0, T - 1
      d = one_trial(N, t_)
@@ -63,6 +65,7 @@ program gacha
      totalsq = totalsq + d * d
   end do
   ! TODO: 上の parallel do を閉じる !$omp end parallel do を書け.
+  elapsed = omp_get_wtime() - t0
 
   mean = real(total, 8) / T
   var  = real(totalsq, 8) / T - mean * mean
@@ -73,4 +76,5 @@ program gacha
   end do
   print "(a,i0,a,i0,a,f0.3,a,f0.3,a,f0.3)", &
        "N=", N, ", trials=", T, ": 平均 ", mean, " 回 (理論 ", N * H, "), 標準偏差 ", sqrt(var)
+  print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program gacha
