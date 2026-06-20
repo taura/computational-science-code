@@ -1,4 +1,4 @@
-""" md 
+""" md
 
 """ include {out_dir}/{nn_topic}/problems/{nn_problem}/problem.md """
 
@@ -6,115 +6,22 @@
 
 """ md
 
-# AIチューター
+# ツールの読み込み
 
-- 以下は必要に応じて実行（毎度実行する必要はない）
+- AIチュータ及びジョブ投入ツールの読み込み (カーネル起動後に一度実行すればよい)
+  - `heytutor` : `%%hey` でAIチュータに質問できるようになる (使い方は末尾を参照)
+  - `wisteria_submit` : `%%bash_submit_a` (Aquarius) などでジョブ投入できるようになる
 
 """
 
 """ code w """
 import heytutor
-""" """
-
-""" md
-
-## 一般的な質問
-
-- ChatGPTなどに聞くときのように自由に質問可能。
-- ただし「答えを教えて」などは自制すること。
-
-"""
-
-""" codex w
-%%hey
-
-C++の関数定義の文法どんなだっけ?
-"""
-
-""" md
-## この問題に関するヒント
-
-- `{{file:problem.md}}` は上記の問題文に展開される。
-
-"""
-
-""" codex w
-%%hey
-
-この問題に関するヒントを教えて
-
-問題:
-{{file:problem.md}}
-"""
-
-""" md
-
-## いくつかの変数
-
-* それぞれ以下のように展開される。
-
-* `{{file:FILENAME}}` : _FILENAME_ の中身
-* `{{bash[-1]}}` : 最後に実行した `%%bash_` セルの入力・出力, `{{bash[-2]}}` = その前の入力・出力, etc.
-
-## 困ったときのヘルプ
-
-* コンパイル時や実行時のエラー直後に以下を実行するとエラーに関するヘルプが得られる。
-
-"""
-
-""" codex w
-%%hey
-
-以下のエラーが出た。何が間違い?
-
-プログラム:
-{{file:{problem}.cpp}}
-
-コマンドと実行結果:
-{{bash[-1]}}
-
-"""
-
-""" md
-
-## フィードバック
-
-* 答えが出た後も、無駄なところや、より良いやり方がないかを聞くことを推奨。
-* 以下のファイル名は適宜書き換えよ (Fortranなら `.cpp` -> `.f90` とするなど)
-
-"""
-
-""" codex w
-%%hey
-
-フィードバックを下さい。
-
-問題:
-{{file:problem.md}}
-
-私の答:
-{{file:{problem}.cpp}}
-"""
-
-""" md
-
-# ジョブ投入ツール
-
-- 以下を実行しておくと、`%%bash_submit_a` (Aquariousへのジョブ投入), `%%bash_submit_o` (Odyssey へのジョブ投入) が使えるようになる
-
-"""
-
-""" code w """
 import wisteria_submit
 """ """
 
 """ md
 # C++ ベースコード
 """
-
-""" code w """
-import heytutor
-""" """
 
 """ code w """
 %%writefile_ {problem}.cpp
@@ -132,7 +39,7 @@ nvc++ -fast {mpflag} {problem}.cpp -o {problem}_cpp.exe
 """
 
 """ md
-## Run
+## 実行
 
 - ログインノードでそのまま実行 (数秒で終わるジョブ)
 """
@@ -171,29 +78,8 @@ nvc++ -fast {mpflag} {problem}.cpp -o {problem}_cpp.exe
 """
 
 """ md
-## 質問/フィードバック
-"""
-
-""" codex w
-%%hey
-
-私の答に対するフィードバックをください。
-
-問題:
-{{file:problem.md}}
-
-私の答:
-{{file:{problem}.cpp}}
-
-"""
-
-""" md
 # Fortran ベースコード
 """
-
-""" code w """
-import heytutor
-""" """
 
 """ codex w
 %%writefile_ {problem}.f90
@@ -211,7 +97,7 @@ nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 """
 
 """ md
-## Run
+## 実行
 
 - ログインノードでそのまま実行 (数秒で終わるジョブ)
 """
@@ -250,7 +136,61 @@ nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 """
 
 """ md
-## 質問/フィードバック
+
+# AIチュータへの質問の仕方 (参考)
+
+- 先頭で `import heytutor` 済みなら, セルに `%%hey` と書いて質問できる。
+- ChatGPTなどと同様に自由に質問してよい。ただし「答えをそのまま教えて」などは自制すること。
+- セル内で使える変数 (自動で展開される):
+  - `{{file:FILENAME}}` : _FILENAME_ の中身 (例: `{{file:problem.md}}`, `{{file:{problem}.cpp}}`)
+  - `{{bash[-1]}}` : 最後に実行した `%%bash_` セルの入力・出力, `{{bash[-2]}}` = その前, ...
+- 以下は質問例 (必要に応じてコピーして使う。Fortranなら `.cpp` を `.f90` に書き換える)。
+
+## 一般的な質問
+
+"""
+
+""" codex w
+%%hey
+
+C++の関数定義の文法どんなだっけ?
+"""
+
+""" md
+## この問題に関するヒント
+"""
+
+""" codex w
+%%hey
+
+この問題に関するヒントを教えて
+
+問題:
+{{file:problem.md}}
+"""
+
+""" md
+## 困ったときのヘルプ
+
+- コンパイル時や実行時のエラー直後に実行するとエラーに関するヘルプが得られる。
+"""
+
+""" codex w
+%%hey
+
+以下のエラーが出た。何が間違い?
+
+プログラム:
+{{file:{problem}.cpp}}
+
+コマンドと実行結果:
+{{bash[-1]}}
+"""
+
+""" md
+## フィードバック
+
+- 答えが出た後も, 無駄なところやより良いやり方がないかを聞くことを推奨。
 """
 
 """ codex w
@@ -262,6 +202,5 @@ nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 {{file:problem.md}}
 
 私の答:
-{{file:{problem}.f90}}
+{{file:{problem}.cpp}}
 """
-
