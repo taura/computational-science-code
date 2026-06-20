@@ -14,3 +14,6 @@ __pycache__/
 *.exe
 *.s
 *.ll
+
+# 学生向け生成物は別レポ (01jupyter/notebooks/source) なので親では追跡しない
+notebooks/source/
