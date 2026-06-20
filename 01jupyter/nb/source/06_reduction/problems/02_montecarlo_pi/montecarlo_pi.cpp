@@ -1,30 +1,32 @@
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
-/* 反復番号 i から決まる擬似乱数 (splitmix64) を [0,1) の double で返す.
-   毎回 i から計算するので, スレッドごとの状態を持たず並列化しやすい. */
-static inline double lcg01(uint64_t i) {
-  uint64_t x = (i + 1) * 6364136223846793005ULL + 1442695040888963407ULL;
-  /* よくかき混ぜる */
-  x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
-  x ^= x >> 27; x *= 0x94d049bb133111ebULL;
-  x ^= x >> 31;
-  /* 上位 53 bit を [0,1) の double に */
-  return (double)(x >> 11) * (1.0 / 9007199254740992.0);
+/* 状態を持たない (カウンタベースの) 乱数: (seed,k) から [0,1) の値を決める純粋関数。
+   - seed は「どの乱数列(ストリーム)か」, k は「その何番目か」。同じ (seed,k) なら必ず同じ値。
+   - 毎回 (seed,k) から計算し共有状態を持たないので, 並列化しても引かれる乱数列は
+     スレッド数によらず同一になる (競合も起きない)。
+   (教育用の簡単なハッシュ。M=2^31-1 未満で計算し, 途中の積も 64bit に収まる。)        */
+static inline double draw_rand01(long long seed, long long k) {
+  const long long M = 2147483647LL;   /* 2^31 - 1 */
+  long long x = ((seed % M) * 2654435761LL + (k % M) + 1) % M;
+  x = ((x ^ (x >> 16)) * 1812433253LL) % M;
+  x = ((x ^ (x >> 13)) * 1664525LL)    % M;
+  x =  (x ^ (x >> 16)) % M;
+  return (double)x / (double)M;        /* [0,1) */
 }
 
 int main(int argc, char ** argv) {
   long n = (1 < argc ? atol(argv[1]) : 100L * 1000L * 1000L);
   long count = 0;               /* 単位円の 1/4 の内側に入った点数 */
   printf("n = %ld\n", n);
-  /* 単位正方形 [0,1)x[0,1) に n 点を投げ, 半径 1 の円の内側に入った点を数える. */
+  /* 単位正方形 [0,1)x[0,1) に n 点を投げ, 半径 1 の円の内側に入った点を数える。
+     点 i は乱数列 i の 0,1 番目を x,y 座標に使う。 */
   // BEGIN ANSWER: 円内に入った点数を reduction(+:count) で集計して π を求めよ.
 #pragma omp parallel for reduction(+:count)
   // END ANSWER
   for (long i = 0; i < n; i++) {
-    double x = lcg01(2 * i);
-    double y = lcg01(2 * i + 1);
+    double x = draw_rand01(i, 0);
+    double y = draw_rand01(i, 1);
     if (x * x + y * y < 1.0) count++;
   }
   double pi = 4.0 * (double)count / (double)n;

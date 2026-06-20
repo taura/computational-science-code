@@ -1,39 +1,36 @@
 module gacha_mod
-  integer(8), parameter :: M = 2147483647_8   ! 2^31 - 1
 contains
-  ! 状態を持たない (カウンタベースの) 乱数。
-  ! mix(x) は「整数 x → よく混ざった整数」を返す純粋関数。
-  ! 同じ入力なら必ず同じ値 → スレッドで分担しても引かれる乱数列は変わらない。
-  ! (教育用の簡単なハッシュ。途中の積も 64bit に収まり桁あふれしない。)
-  function mix(x0) result(x)
-    integer(8), intent(in) :: x0
-    integer(8) :: x
-    x = modulo(ieor(x0, ishft(x0, -16)) * 1812433253_8, M)
-    x = modulo(ieor(x,  ishft(x,  -13)) * 1664525_8,    M)
-    x = modulo(ieor(x,  ishft(x,  -16)), M)
-  end function mix
-
-  ! t 回目の試行の k 回目の引きで出る景品番号 (0..N-1)
-  function draw(t, k, N) result(idx)
-    integer(8), intent(in) :: t, k
+  ! 状態を持たない (カウンタベースの) 乱数: たった1つの純粋関数。
+  ! draw_rand(seed, k, N) は 0..N-1 の整数を返す。
+  ! - seed は「どの乱数列(ストリーム)を使うか」を選ぶ番号 (この問題では試行ごとに変える)。
+  ! - k は「その列の何番目を取り出すか」。同じ seed でも k が違えば別の値。
+  ! - 同じ (seed,k) なら必ず同じ値 → スレッドで分担しても乱数列はスレッド数によらず同一。
+  ! (教育用の簡単なハッシュ。M=2^31-1 未満で計算し, 途中の積も 64bit に収まる。)
+  function draw_rand(seed, k, N) result(idx)
+    integer(8), intent(in) :: seed, k
     integer, intent(in) :: N
     integer :: idx
-    integer(8) :: key
-    key = modulo((t + 1) * 2654435761_8 + (k + 1), M)
-    idx = int(modulo(mix(key), int(N, 8)))
-  end function draw
+    integer(8), parameter :: M = 2147483647_8   ! 2^31 - 1
+    integer(8) :: x
+    x = modulo(modulo(seed, M) * 2654435761_8 + modulo(k, M) + 1_8, M)   ! seed と k を1つにまとめる
+    x = modulo(ieor(x, ishft(x, -16)) * 1812433253_8, M)
+    x = modulo(ieor(x, ishft(x, -13)) * 1664525_8,    M)
+    x = modulo(ieor(x, ishft(x, -16)), M)
+    idx = int(modulo(x, int(N, 8)))
+  end function draw_rand
 
   ! 1試行: 全種類そろうまでに引いた回数 (そろった種類を 64bit マスクで管理, N <= 62)
-  function one_trial(N, t) result(draws)
+  ! seed に試行番号を渡し, k=0,1,2,... と引いていく。
+  function one_trial(N, seed) result(draws)
     integer, intent(in) :: N
-    integer(8), intent(in) :: t
+    integer(8), intent(in) :: seed
     integer(8) :: draws, got, full, k
     integer :: idx
     got = 0_8
     full = ishft(1_8, N) - 1_8
     k = 0_8
     do while (got /= full)
-       idx = draw(t, k, N)
+       idx = draw_rand(seed, k, N)
        got = ior(got, ishft(1_8, idx))
        k = k + 1_8
     end do

@@ -3,7 +3,6 @@ program montecarlo
   implicit none
   integer(8) :: n, lo, hi, my_n, hits, i
   integer :: tid, nt
-  integer(8) :: state
   real(8) :: x, y, pi
   character(len=32) :: arg
 
@@ -15,21 +14,19 @@ program montecarlo
      n = 4000000_8
   end if
 
-  ! BEGIN ANSWER: 下のブロックを !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, state, x, y, pi) ... !$omp end parallel で囲み, 各スレッドが自分の担当分の点を投げて自分の π 推定値を表示するようにせよ.
-  !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, state, x, y, pi)
+  ! BEGIN ANSWER: 下のブロックを !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi) ... !$omp end parallel で囲み, 各スレッドが自分の担当分の点を投げて自分の π 推定値を表示するようにせよ.
+  !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi)
   ! END ANSWER
   tid = omp_get_thread_num()
   nt  = omp_get_num_threads()
-  ! このスレッドの担当する点数 (n を T スレッドで分割)
+  ! このスレッドの担当する点の範囲 (全体 n 点を T スレッドで分割)
   lo = tid * n / nt
   hi = (tid + 1) * n / nt
   my_n = hi - lo
-  ! スレッドごとに異なる乱数種 (各スレッドが独立した LCG を持つ)
-  state = int(tid + 1, 8)
   hits = 0
-  do i = 1, my_n
-     x = lcg(state)
-     y = lcg(state)
+  do i = lo, hi - 1
+     x = draw_rand01(i, 0_8)         ! 点 i の x 座標
+     y = draw_rand01(i, 1_8)         ! 点 i の y 座標
      if (x * x + y * y < 1.0d0) then
         hits = hits + 1
      end if
@@ -48,14 +45,19 @@ program montecarlo
 
 contains
 
-  ! 単純な線形合同法 (LCG). state を更新し [0,1) の乱数を返す.
-  ! Fortran 組込みの乱数はスレッド安全とは限らないので自前で実装する.
-  function lcg(s) result(r)
-    integer(8), intent(inout) :: s
-    real(8) :: r
-    ! 2^31 を法とする LCG (Numerical Recipes 系の係数)
-    s = mod(1103515245_8 * s + 12345_8, 2147483648_8)
-    r = real(s, 8) / 2147483648.0d0
-  end function lcg
+  ! 状態を持たない (カウンタベースの) 乱数: (seed,k) から [0,1) の値を決める純粋関数。
+  ! 点 i の座標を draw_rand01(i,0), draw_rand01(i,1) で決めるので, どのスレッドが
+  ! 担当しても点 i の位置は同じ (共有状態が無いので競合しない)。
+  function draw_rand01(seed, k) result(u)
+    integer(8), intent(in) :: seed, k
+    real(8) :: u
+    integer(8), parameter :: M = 2147483647_8   ! 2^31 - 1
+    integer(8) :: x
+    x = modulo(modulo(seed, M) * 2654435761_8 + modulo(k, M) + 1_8, M)
+    x = modulo(ieor(x, ishft(x, -16)) * 1812433253_8, M)
+    x = modulo(ieor(x, ishft(x, -13)) * 1664525_8,    M)
+    x = modulo(ieor(x, ishft(x, -16)), M)
+    u = real(x, 8) / real(M, 8)        ! [0,1)
+  end function draw_rand01
 
 end program montecarlo
