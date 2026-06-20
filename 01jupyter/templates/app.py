@@ -102,7 +102,7 @@ nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 # 発展目標 (できる範囲で挑戦)
 
 - この問題の基本は **マルチコア並列化** (`#pragma omp parallel for` / `!$omp parallel do` など)。まずはここまでを目指す。
-- 余力があれば次にも挑戦してみよう (全部必須ではない):
+- 余力があれば次にも挑戦:
   - **GPUで並列化**: コンパイルを `-mp=gpu` にして, 重いループに `#pragma omp target teams distribute parallel for` (+ 必要に応じて `map`) を付ける。
   - **SIMD化** (11/12章): 内側ループに `#pragma omp simd`, またはベクトル型。 **ILP向上** (13章): ベクトル長 `nl` の調整。
 - どこまで速くできるか挑戦し, その効果を下の「性能を比べる」で可視化しよう。
