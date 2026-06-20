@@ -1,1 +1,1 @@
-../../../../../templates/simple.py
+../../../../../templates/asm.py
