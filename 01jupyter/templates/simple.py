@@ -10,7 +10,7 @@
 
 - AIチュータ及びジョブ投入ツールの読み込み (カーネル起動後に一度実行すればよい)
   - `heytutor` : `%%hey` でAIチュータに質問できるようになる (使い方は末尾を参照)
-  - `wisteria_submit` : `%%bash_submit_a` (Aquarius) などでジョブ投入できるようになる
+  - `wisteria_submit` : `%%bash_submit` (先頭に `#PJM ...` を書く) でジョブ投入できるようになる
 
 """
 
@@ -41,27 +41,8 @@ nvc++ -fast {mpflag} {problem}.cpp -o {problem}_cpp.exe
 """ md
 ## 実行
 
-- ログインノードでそのまま実行 (数秒で終わるジョブ)
-"""
-
-""" codex w
-%%bash_
-./{problem}_cpp.exe
-"""
-
-""" md
-- Aquariusに投入
-"""
-
-""" codex w
-%%bash_submit_a
-
-./{problem}_cpp.exe
-"""
-
-""" md
-- 上記は以下と同値
-- キューや制限時間などを変更したいときは適宜変更・追加
+- 計算ノードにジョブとして投入して実行する。スレッド数・キュー・制限時間は `#PJM` 行で調整する。
+- すぐにログインノードで試したいとき (数秒で終わる軽いジョブ) は, 先頭の `%%bash_submit` を `%%bash_` に書き換えて (必要なら `#PJM` 行を消して) 実行すればよい。
 """
 
 """ codex w
@@ -99,31 +80,12 @@ nvfortran -fast {mpflag} {problem}.f90 -o {problem}_f90.exe
 """ md
 ## 実行
 
-- ログインノードでそのまま実行 (数秒で終わるジョブ)
-"""
-
-""" codex w
-%%bash_
-./{problem}_f90.exe
-"""
-
-""" md
-- Aquariusに投入
-"""
-
-""" codex w
-%%bash_submit_a
-./{problem}_f90.exe
-"""
-
-""" md
-- 上記は以下と同値
-- キューや制限時間などを変更したいときは適宜変更・追加
+- 計算ノードにジョブとして投入して実行する。スレッド数・キュー・制限時間は `#PJM` 行で調整する。
+- すぐにログインノードで試したいとき (数秒で終わる軽いジョブ) は, 先頭の `%%bash_submit` を `%%bash_` に書き換えて (必要なら `#PJM` 行を消して) 実行すればよい。
 """
 
 """ codex w
 %%bash_submit
-
 #PJM -L rscgrp=lecture-a
 #PJM -L elapse=0:01:00
 #PJM -L gpu=1
