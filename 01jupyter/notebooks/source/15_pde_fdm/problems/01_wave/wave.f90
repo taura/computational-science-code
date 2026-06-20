@@ -34,18 +34,14 @@ program wave
 
   do t = 1, steps
      ! 内部の各点を更新 (時間1ステップ進める)
-     ! BEGIN ANSWER: 内側の二重ループを !$omp parallel do collapse(2) private(lap) で並列化せよ.
-     !$omp parallel do collapse(2) private(lap)
-     ! END ANSWER
+     ! TODO: 内側の二重ループを !$omp parallel do collapse(2) private(lap) で並列化せよ.
      do j = 1, L - 2
         do i = 1, L - 2
            lap = cu(i-1,j) + cu(i+1,j) + cu(i,j-1) + cu(i,j+1) - 4.0d0 * cu(i,j)
            nx(i,j) = 2.0d0 * cu(i,j) - up(i,j) + coef * lap
         end do
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
-     !$omp end parallel do
-     ! END ANSWER
+     ! TODO: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
      ! up <- cu <- nx と時間を1つ進める (ポインタを回す)
      tmp => up; up => cu; cu => nx; nx => tmp
   end do
