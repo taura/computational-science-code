@@ -11,10 +11,10 @@
    推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
    各画像の推論は独立なので並列化できる。
 
-   2次元配列は Mat クラスで表す (A(i,j) でアクセス, 中身は連続メモリ)。
+   2次元配列は Mat, 1次元配列は Vec で表す (中身は連続メモリで, .a が生バッファ)。
    入力はNumPy標準の .npy 形式。I/O や行列演算は関数に分けてある (主眼は並列化)。 */
 
-/* ====================== 2次元配列 (行列) ====================== */
+/* ====================== 行列 (2次元) と ベクトル (1次元) ====================== */
 /* 連続メモリの row-major 行列: A(i,j) = a[i*cols + j] */
 struct Mat {
   long rows, cols;
@@ -27,7 +27,21 @@ struct Mat {
   Mat & operator=(const Mat &) = delete;
   double & operator()(long i, long j)       { return a[i * cols + j]; }
   double   operator()(long i, long j) const { return a[i * cols + j]; }
-  double * data() { return a; }
+  void zero() { for (long i = 0; i < rows * cols; i++) a[i] = 0.0; }
+};
+
+struct Vec {
+  long n;
+  double * a;
+  Vec(long n_)             : n(n_), a(new double[n_]) {}
+  Vec(long n_, double * p) : n(n_), a(p) {}                     /* 既存バッファを引き取る */
+  Vec(Vec && o) noexcept : n(o.n), a(o.a) { o.a = nullptr; }
+  ~Vec() { delete[] a; }
+  Vec(const Vec &) = delete;
+  Vec & operator=(const Vec &) = delete;
+  double & operator()(long i)       { return a[i]; }
+  double   operator()(long i) const { return a[i]; }
+  void zero() { for (long i = 0; i < n; i++) a[i] = 0.0; }
 };
 
 /* ====================== .npy 入力 ====================== */
@@ -78,23 +92,24 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   return out;
 }
 
-/* .npy を2次元の行列として読む (1次元なら cols=1) */
+/* .npy を行列として読む (1次元なら cols=1) */
 static Mat read_npy_mat(const char * path) {
   long sh[2]; int nd;
   double * a = read_npy(path, sh, &nd);
   return Mat(sh[0], (nd == 2 ? sh[1] : 1), a);
 }
 
-/* .npy を1次元のベクトルとして読む */
-static double * read_npy_vec(const char * path) {
+/* .npy をベクトルとして読む */
+static Vec read_npy_vec(const char * path) {
   long sh[2]; int nd;
-  return read_npy(path, sh, &nd);
+  double * a = read_npy(path, sh, &nd);
+  return Vec(sh[0] * (nd == 2 ? sh[1] : 1), a);
 }
 
 /* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
 static Mat load_images(const char * path) {
   Mat X = read_npy_mat(path);
-  for (long i = 0; i < X.rows * X.cols; i++) X.data()[i] /= 255.0;
+  for (long i = 0; i < X.rows * X.cols; i++) X.a[i] /= 255.0;
   return X;
 }
 
@@ -119,11 +134,11 @@ static int argmax(const double * v, long n) {
 }
 
 /* 1枚の画像を MLP に通して予測クラスを返す: h=ReLU(W1 x+b1), o=W2 h+b2, argmax(o) */
-static int predict(const Mat & W1, const double * b1,
-                   const Mat & W2, const double * b2, const double * x) {
+static int predict(const Mat & W1, const Vec & b1,
+                   const Mat & W2, const Vec & b2, const double * x) {
   double h[1024], o[64];               /* HID<=1024, OUT<=64 を仮定 */
-  matvec(W1, b1, x, h); relu_inplace(h, W1.rows);
-  matvec(W2, b2, h, o);
+  matvec(W1, b1.a, x, h); relu_inplace(h, W1.rows);
+  matvec(W2, b2.a, h, o);
   return argmax(o, W2.rows);
 }
 
@@ -132,10 +147,10 @@ int main(int argc, char ** argv) {
   /* 学習済みの重みとテスト画像を読み込む */
   Mat W1 = read_npy_mat("data/W1.npy");      /* [HID, IN]  */
   Mat W2 = read_npy_mat("data/W2.npy");      /* [OUT, HID] */
-  double * b1 = read_npy_vec("data/b1.npy");
-  double * b2 = read_npy_vec("data/b2.npy");
-  Mat X = load_images("data/x_test.npy");    /* [NT, IN], 0..1 正規化済み */
-  double * y = read_npy_vec("data/y_test.npy");
+  Vec b1 = read_npy_vec("data/b1.npy");
+  Vec b2 = read_npy_vec("data/b2.npy");
+  Mat X  = load_images("data/x_test.npy");   /* [NT, IN], 0..1 正規化済み */
+  Vec y  = read_npy_vec("data/y_test.npy");
   long NT = X.rows;
 
   /* 推論: 各画像の予測クラスと正解ラベルを比べ, 正解数を数える。各画像は独立。 */
@@ -145,12 +160,11 @@ int main(int argc, char ** argv) {
 #pragma omp parallel for reduction(+:correct)
   // END ANSWER
   for (long i = 0; i < NT; i++)
-    if (predict(W1, b1, W2, b2, &X(i, 0)) == (int)y[i]) correct++;
+    if (predict(W1, b1, W2, b2, &X(i, 0)) == (int)y(i)) correct++;
   double elapsed = omp_get_wtime() - t0;
 
   printf("MNIST テスト %ld 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
          NT, correct, 100.0 * correct / NT);
   printf("elapsed = %.3f sec\n", elapsed);
-  delete[] b1; delete[] b2; delete[] y;       /* W1,W2,X は Mat のデストラクタが解放 */
   return 0;
 }

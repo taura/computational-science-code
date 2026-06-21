@@ -16,11 +16,12 @@
    並列化対象は「ミニバッチ内の全サンプルにわたる勾配の和」(配列 reduction)。
 
    1サンプルの forward+backprop は forward_backward() に, 重み更新は sgd_update() に
-   まとめてある。重み・画像は Mat クラス。ただし配列 reduction の対象 (勾配) は
-   OpenMP の配列セクション構文に合わせて生のポインタ (gW1[...]) で扱う。
+   まとめてある。行列は Mat, ベクトルは Vec (中身は連続メモリで .a が生バッファ)。
+   ただし配列 reduction の対象 (勾配) は, OpenMP の配列セクションが「素のポインタ」を
+   base に要求するため, gW1.a 等を指すポインタを reduction の箇所でだけ使う。
    入出力はNumPy標準の .npy 形式 (read_npy / write_npy を用意)。 */
 
-/* ====================== 2次元配列 (行列) ====================== */
+/* ====================== 行列 (2次元) と ベクトル (1次元) ====================== */
 /* 連続メモリの row-major 行列: A(i,j) = a[i*cols + j] */
 struct Mat {
   long rows, cols;
@@ -33,7 +34,21 @@ struct Mat {
   Mat & operator=(const Mat &) = delete;
   double & operator()(long i, long j)       { return a[i * cols + j]; }
   double   operator()(long i, long j) const { return a[i * cols + j]; }
-  double * data() { return a; }
+  void zero() { for (long i = 0; i < rows * cols; i++) a[i] = 0.0; }
+};
+
+struct Vec {
+  long n;
+  double * a;
+  Vec(long n_)             : n(n_), a(new double[n_]) {}
+  Vec(long n_, double * p) : n(n_), a(p) {}                     /* 既存バッファを引き取る */
+  Vec(Vec && o) noexcept : n(o.n), a(o.a) { o.a = nullptr; }
+  ~Vec() { delete[] a; }
+  Vec(const Vec &) = delete;
+  Vec & operator=(const Vec &) = delete;
+  double & operator()(long i)       { return a[i]; }
+  double   operator()(long i) const { return a[i]; }
+  void zero() { for (long i = 0; i < n; i++) a[i] = 0.0; }
 };
 
 /* ====================== .npy 入出力 ====================== */
@@ -84,23 +99,24 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   return out;
 }
 
-/* .npy を2次元の行列として読む (1次元なら cols=1) */
+/* .npy を行列として読む (1次元なら cols=1) */
 static Mat read_npy_mat(const char * path) {
   long sh[2]; int nd;
   double * a = read_npy(path, sh, &nd);
   return Mat(sh[0], (nd == 2 ? sh[1] : 1), a);
 }
 
-/* .npy を1次元のベクトルとして読む */
-static double * read_npy_vec(const char * path) {
+/* .npy をベクトルとして読む */
+static Vec read_npy_vec(const char * path) {
   long sh[2]; int nd;
-  return read_npy(path, sh, &nd);
+  double * a = read_npy(path, sh, &nd);
+  return Vec(sh[0] * (nd == 2 ? sh[1] : 1), a);
 }
 
 /* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
 static Mat load_images(const char * path) {
   Mat X = read_npy_mat(path);
-  for (long i = 0; i < X.rows * X.cols; i++) X.data()[i] /= 255.0;
+  for (long i = 0; i < X.rows * X.cols; i++) X.a[i] /= 255.0;
   return X;
 }
 
@@ -194,21 +210,21 @@ static inline double draw_rand01(long long seed, long long k) {
 static void init_he(Mat & W, long long salt) {
   double scale = sqrt(2.0 / W.cols) * 2.0;
   for (long k = 0; k < W.rows * W.cols; k++)
-    W.data()[k] = (draw_rand01(k, salt) - 0.5) * scale;
+    W.a[k] = (draw_rand01(k, salt) - 0.5) * scale;
 }
 
 /* 1サンプルの forward + backprop。勾配を g... に加算し, 損失と正否を返す。
    勾配は配列 reduction の対象なので生ポインタで受け取り gW1[...] で加算する。 */
 struct LossCorrect { double loss; int correct; };
-static LossCorrect forward_backward(const Mat & W1, const double * b1,
-                                    const Mat & W2, const double * b2,
+static LossCorrect forward_backward(const Mat & W1, const Vec & b1,
+                                    const Mat & W2, const Vec & b2,
                                     const double * x, int label,
                                     double * gW1, double * gb1,
                                     double * gW2, double * gb2) {
   const int HID = W1.rows, IN = W1.cols, OUT = W2.rows;
   double h[1024], o[64], dout[64], dh[1024];       /* HID<=1024, OUT<=64 を仮定 */
-  matvec(W1, b1, x, h); relu_inplace(h, HID);      /* h = ReLU(W1 x + b1) */
-  matvec(W2, b2, h, o); softmax_inplace(o, OUT);   /* p = softmax(W2 h + b2) */
+  matvec(W1, b1.a, x, h); relu_inplace(h, HID);    /* h = ReLU(W1 x + b1) */
+  matvec(W2, b2.a, h, o); softmax_inplace(o, OUT); /* p = softmax(W2 h + b2) */
 
   LossCorrect r;
   r.loss = -log(o[label] + 1e-12);
@@ -225,9 +241,9 @@ static LossCorrect forward_backward(const Mat & W1, const double * b1,
 }
 
 /* 勾配降下の1ステップ: W -= sc * gW,  b -= sc * gb */
-static void sgd_update(Mat & W, double * b, const double * gW, const double * gb, double sc) {
-  axpy(W.data(), -sc, gW, W.rows * W.cols);    /* W -= sc gW */
-  axpy(b, -sc, gb, W.rows);                    /* b -= sc gb */
+static void sgd_update(Mat & W, Vec & b, const Mat & gW, const Vec & gb, double sc) {
+  axpy(W.a, -sc, gW.a, W.rows * W.cols);
+  axpy(b.a, -sc, gb.a, b.n);
 }
 
 /* ====================== main ====================== */
@@ -238,24 +254,22 @@ int main(int argc, char ** argv) {
 
   /* 訓練データの読み込み */
   Mat X = load_images("data/x_train.npy");        /* [N, IN], 0..1 正規化済み */
-  double * y = read_npy_vec("data/y_train.npy");
+  Vec y = read_npy_vec("data/y_train.npy");
   const int IN = X.cols, HID = 128, OUT = 10;
   long N = X.rows;
 
   /* パラメータ初期化 (He 初期化, バイアスは 0) */
   Mat W1(HID, IN), W2(OUT, HID);
-  double * b1 = new double[HID]();
-  double * b2 = new double[OUT]();
+  Vec b1(HID), b2(OUT);
   init_he(W1, 1); init_he(W2, 2);
+  b1.zero(); b2.zero();
 
-  /* 勾配の総和を入れる配列。重みと同じ形なので gW は Mat, gb はベクトル。 */
+  /* 勾配の総和を入れる配列 (重みと同じ形なので gW は Mat, gb は Vec) */
   Mat gW1(HID, IN), gW2(OUT, HID);
-  double * gb1 = new double[HID];
-  double * gb2 = new double[OUT];
-  /* 配列 reduction は配列セクション構文が「生ポインタ/配列名」を要求するため,
-     行列の中身を指すポインタ (data()) を使う (gW1d[:HID*IN] のように書く)。 */
-  double * gW1d = gW1.data();
-  double * gW2d = gW2.data();
+  Vec gb1(HID), gb2(OUT);
+  /* 配列 reduction の配列セクションは base が素のポインタ識別子である必要があるため,
+     中身を指すポインタを reduction の箇所でだけ使う (長さには .n / .rows*.cols を使う)。 */
+  double * gW1a = gW1.a, * gW2a = gW2.a, * gb1a = gb1.a, * gb2a = gb2.a;
 
   double loss = 0.0; long correct = 0;
   double t0 = omp_get_wtime();
@@ -264,23 +278,23 @@ int main(int argc, char ** argv) {
     for (long b0 = 0; b0 < N; b0 += BS) {
       long b1n = (b0 + BS < N) ? b0 + BS : N;      /* バッチ [b0, b1n) */
       long m = b1n - b0;
-      memset(gW1d, 0, sizeof(double) * HID * IN); memset(gb1, 0, sizeof(double) * HID);
-      memset(gW2d, 0, sizeof(double) * OUT * HID); memset(gb2, 0, sizeof(double) * OUT);
+      gW1.zero(); gW2.zero(); gb1.zero(); gb2.zero();
 
       /* バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
          損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。 */
-      // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2d[:OUT*HID],gb1[:HID],gW1d[:HID*IN]).
-#pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2d[:OUT*HID],gb1[:HID],gW1d[:HID*IN])
+      // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2a[:gb2.n],gW2a[:gW2.rows*gW2.cols],gb1a[:gb1.n],gW1a[:gW1.rows*gW1.cols]).
+#pragma omp parallel for \
+        reduction(+:loss,correct,gb2a[:gb2.n],gW2a[:gW2.rows*gW2.cols],gb1a[:gb1.n],gW1a[:gW1.rows*gW1.cols])
       // END ANSWER
       for (long i = b0; i < b1n; i++) {
-        LossCorrect r = forward_backward(W1, b1, W2, b2, &X(i, 0), (int)y[i],
-                                         gW1d, gb1, gW2d, gb2);
+        LossCorrect r = forward_backward(W1, b1, W2, b2, &X(i, 0), (int)y(i),
+                                         gW1a, gb1a, gW2a, gb2a);
         loss += r.loss; correct += r.correct;
       }
 
       double sc = lr / (double)m;                  /* バッチ内勾配を平均して降下 */
-      sgd_update(W1, b1, gW1d, gb1, sc);
-      sgd_update(W2, b2, gW2d, gb2, sc);
+      sgd_update(W1, b1, gW1, gb1, sc);
+      sgd_update(W2, b2, gW2, gb2, sc);
     }
     loss /= (double)N;
     if (ep % 5 == 0 || ep == E - 1)
@@ -293,13 +307,10 @@ int main(int argc, char ** argv) {
   printf("elapsed = %.3f sec\n", elapsed);
 
   /* 学習済みの重みを .npy で書き出す (00_mnist_infer が読む) */
-  write_npy("data/W1.npy", W1.data(), HID, IN);
-  write_npy("data/b1.npy", b1, HID, 0);
-  write_npy("data/W2.npy", W2.data(), OUT, HID);
-  write_npy("data/b2.npy", b2, OUT, 0);
+  write_npy("data/W1.npy", W1.a, HID, IN);
+  write_npy("data/b1.npy", b1.a, HID, 0);
+  write_npy("data/W2.npy", W2.a, OUT, HID);
+  write_npy("data/b2.npy", b2.a, OUT, 0);
   printf("重みを data/W1.npy, b1.npy, W2.npy, b2.npy に保存しました\n");
-
-  delete[] b1; delete[] b2; delete[] y;
-  delete[] gb1; delete[] gb2;             /* gW1,gW2 は Mat のデストラクタが解放 */
   return 0;
 }
