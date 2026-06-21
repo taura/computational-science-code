@@ -9,11 +9,12 @@
 module mlp
 contains
   ! --- .npy を読み, 中身を「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる ---
-  subroutine read_npy(path, a, s0, s1, ndim)
+  subroutine read_npy(path, a, shp, ndim)
     character(*), intent(in) :: path
     real(8), allocatable, intent(out) :: a(:)
-    integer, intent(out) :: s0, s1, ndim
-    integer :: u, hlen, p1, p2, ios
+    integer, intent(in)  :: ndim            ! 期待する次元数 (1 or 2)
+    integer, intent(out) :: shp(ndim)        ! 形 (ndim 個)
+    integer :: u, hlen, p1, p2, ios, s0, s1, file_ndim
     integer(8) :: n, i
     character(len=10) :: magic
     character(len=:), allocatable :: hdr, sub
@@ -40,8 +41,14 @@ contains
     sub = hdr(p1+1:p2-1)
     do i = 1, len(sub); if (sub(i:i) == ',') sub(i:i) = ' '; end do
     read(sub, *, iostat=ios) s0, s1
-    if (ios /= 0) then; ndim = 1; s1 = 1; read(sub, *) s0
-    else;               ndim = 2; end if
+    if (ios /= 0) then; file_ndim = 1; s1 = 1; read(sub, *) s0
+    else;               file_ndim = 2; end if
+    if (file_ndim /= ndim) then
+       print "(a,a,i0,a,i0,a)", trim(path), ": ", ndim, " 次元を期待しましたが ", file_ndim, " 次元でした"
+       stop 1
+    end if
+    shp(1) = s0
+    if (ndim == 2) shp(2) = s1
     n = int(s0,8) * merge(int(s1,8), 1_8, ndim == 2)
 
     allocate(a(n))
@@ -185,7 +192,7 @@ program mlp_train
   implicit none
   integer, parameter :: IN = 784, HID = 128, OUT = 10
   character(len=32) :: arg
-  integer :: E, BS, ep, s0, s1, nd, scorr
+  integer :: E, BS, ep, sh1(1), sh2(2), scorr
   integer(8) :: N, i, b0, b1n, m
   real(8) :: lr, loss, sc, sloss, t0, elapsed
   integer(8) :: correct
@@ -199,9 +206,9 @@ program mlp_train
   if (command_argument_count() >= 3) then; call get_command_argument(3, arg); read(arg,*) BS; end if
 
   ! 訓練データの読み込み (画素 0..255 -> 0..1), X(:,i) が画像 i
-  call read_npy("data/x_train.npy", flat, s0, s1, nd); N = s0
+  call read_npy("data/x_train.npy", flat, sh2, 2); N = sh2(1)
   X = reshape(flat, [IN, int(N)]) / 255.0d0
-  call read_npy("data/y_train.npy", flat, s0, s1, nd)
+  call read_npy("data/y_train.npy", flat, sh1, 1)
   allocate(y(N)); y = nint(flat(1:N))
 
   ! パラメータ初期化 (He 初期化, バイアスは 0)

@@ -9,11 +9,12 @@
 module mlp
 contains
   ! --- .npy を読み, 中身を「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる ---
-  subroutine read_npy(path, a, s0, s1, ndim)
+  subroutine read_npy(path, a, shp, ndim)
     character(*), intent(in) :: path
     real(8), allocatable, intent(out) :: a(:)
-    integer, intent(out) :: s0, s1, ndim
-    integer :: u, hlen, p1, p2, ios
+    integer, intent(in)  :: ndim            ! 期待する次元数 (1 or 2)
+    integer, intent(out) :: shp(ndim)        ! 形 (ndim 個)
+    integer :: u, hlen, p1, p2, ios, s0, s1, file_ndim
     integer(8) :: n, i
     character(len=10) :: magic
     character(len=:), allocatable :: hdr, sub
@@ -40,8 +41,14 @@ contains
     sub = hdr(p1+1:p2-1)
     do i = 1, len(sub); if (sub(i:i) == ',') sub(i:i) = ' '; end do
     read(sub, *, iostat=ios) s0, s1
-    if (ios /= 0) then; ndim = 1; s1 = 1; read(sub, *) s0
-    else;               ndim = 2; end if
+    if (ios /= 0) then; file_ndim = 1; s1 = 1; read(sub, *) s0
+    else;               file_ndim = 2; end if
+    if (file_ndim /= ndim) then
+       print "(a,a,i0,a,i0,a)", trim(path), ": ", ndim, " 次元を期待しましたが ", file_ndim, " 次元でした"
+       stop 1
+    end if
+    shp(1) = s0
+    if (ndim == 2) shp(2) = s1
     n = int(s0,8) * merge(int(s1,8), 1_8, ndim == 2)
 
     allocate(a(n))
@@ -85,24 +92,24 @@ program mnist_infer
   use mlp
   use omp_lib
   implicit none
-  integer :: IN, HID, OUT, NT, i, s0, s1, nd
+  integer :: IN, HID, OUT, NT, i, sh1(1), sh2(2)
   integer(8) :: correct
   real(8) :: t0, elapsed
   real(8), allocatable :: W1(:,:), b1(:), W2(:,:), b2(:), X(:,:), flat(:)
   integer, allocatable :: y(:)
 
   ! 重みの読み込み (.npy は C順なので reshape で W(j,k)=W[k][j] の列優先並びになる)
-  call read_npy("data/W1.npy", flat, s0, s1, nd); HID = s0; IN = s1
+  call read_npy("data/W1.npy", flat, sh2, 2); HID = sh2(1); IN = sh2(2)
   W1 = reshape(flat, [IN, HID])
-  call read_npy("data/b1.npy", flat, s0, s1, nd); b1 = flat
-  call read_npy("data/W2.npy", flat, s0, s1, nd); OUT = s0
+  call read_npy("data/b1.npy", flat, sh1, 1); b1 = flat
+  call read_npy("data/W2.npy", flat, sh2, 2); OUT = sh2(1)
   W2 = reshape(flat, [HID, OUT])
-  call read_npy("data/b2.npy", flat, s0, s1, nd); b2 = flat
+  call read_npy("data/b2.npy", flat, sh1, 1); b2 = flat
 
   ! テスト画像の読み込み (画素 0..255 -> 0..1), X(:,i) が画像 i
-  call read_npy("data/x_test.npy", flat, s0, s1, nd); NT = s0
+  call read_npy("data/x_test.npy", flat, sh2, 2); NT = sh2(1)
   X = reshape(flat, [IN, NT]) / 255.0d0
-  call read_npy("data/y_test.npy", flat, s0, s1, nd)
+  call read_npy("data/y_test.npy", flat, sh1, 1)
   allocate(y(NT)); y = nint(flat)
 
   ! 推論: 各画像の予測クラスと正解を比べ正解数を数える。各画像は独立。
