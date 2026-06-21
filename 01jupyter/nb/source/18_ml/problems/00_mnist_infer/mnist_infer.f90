@@ -91,31 +91,9 @@ contains
     nrows = min(shp(1), cap)
   end function load_npy
 
-  ! --- バッチ行列演算: Y = ReLU(W X + b)。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i 独立 ---
-  subroutine dense_relu(W, b, X, Y, m)
-    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
-    real(8), intent(out) :: Y(:,:)
-    integer, intent(in)  :: m
-    integer :: i, k, j
-    real(8) :: s
-    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,k,j,s)
-    ! END ANSWER
-    do i = 1, m
-       do k = 1, size(W,2)
-          s = b(k)
-          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
-          Y(k,i) = max(0.0d0, s)
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-  end subroutine dense_relu
-
-  ! --- バッチ行列演算: Y = softmax(W X + b) (各列で softmax)。列 i 独立 ---
-  subroutine dense_softmax(W, b, X, Y, m)
+  ! --- 行列積 + バイアス: Y = W X + b。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i 独立。
+  !     これが「AI の計算の中身」である行列積。重いのでここを並列化する。 ---
+  subroutine matmul_bias(W, b, X, Y, m)
     real(8), intent(in)  :: W(:,:), b(:), X(:,:)
     real(8), intent(out) :: Y(:,:)
     integer, intent(in)  :: m
@@ -131,20 +109,34 @@ contains
           do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
           Y(k,i) = s
        end do
-       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
-       Y(:,i) = Y(:,i) / sum(Y(:,i))
     end do
     ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
-  end subroutine dense_softmax
+  end subroutine matmul_bias
+
+  ! --- 活性化 (要素ごとの軽い処理, 逐次でよい) ---
+  subroutine relu(Y, m)
+    real(8), intent(inout) :: Y(:,:)
+    integer, intent(in) :: m
+    Y(:,1:m) = max(0.0d0, Y(:,1:m))
+  end subroutine relu
+  subroutine softmax(Y, m)
+    real(8), intent(inout) :: Y(:,:)
+    integer, intent(in) :: m
+    integer :: i
+    do i = 1, m
+       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
+       Y(:,i) = Y(:,i) / sum(Y(:,i))
+    end do
+  end subroutine softmax
 
   ! --- バッチ全体を前向き計算 ---
   subroutine forward(net, m)
     type(net_t), intent(inout) :: net
     integer, intent(in) :: m
-    call dense_relu   (net%W1, net%b1, net%X, net%H, m)   ! H = ReLU(W1 X + b1)
-    call dense_softmax(net%W2, net%b2, net%H, net%P, m)   ! P = softmax(W2 H + b2)
+    call matmul_bias(net%W1, net%b1, net%X, net%H, m); call relu(net%H, m)    ! H = ReLU(W1 X + b1)
+    call matmul_bias(net%W2, net%b2, net%H, net%P, m); call softmax(net%P, m) ! P = softmax(W2 H + b2)
   end subroutine forward
 
   ! --- 予測クラス(argmax P)と正解ラベルを比べ正解数を返す ---

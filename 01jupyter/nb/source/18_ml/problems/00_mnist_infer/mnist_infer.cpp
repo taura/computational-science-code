@@ -11,9 +11,9 @@
    - data/y_test.npy : 正解ラベル (int32 [N], 0..9)
 
    テスト画像 NT 枚を**まとめて行列として**前向き計算する:
-     H = ReLU(X W1^T + b1),  P = softmax(X 2層目)        (X:[NT,IN], H:[NT,HID], P:[NT,OUT])
-   各ステップ (dense_relu, dense_softmax) はバッチ中の全サンプルを一度に処理する。
-   行(=サンプル)ごとに独立なので, その出力行のループを並列化できる。
+     H = ReLU(W1 X + b1),  P = softmax(W2 H + b2)        (X:[NT,IN], H:[NT,HID], P:[NT,OUT])
+   行列積 (matmul_bias) を活性化 (relu/softmax) から分けてある。matmul_bias はバッチ中の
+   全サンプルを一度に処理し, 行(=サンプル)ごとに独立なのでその行ループを並列化できる。
 
    ネットワークの大きさは定数なので, 重み・画像・ラベル・中間結果をすべて固定サイズ配列で
    1つの構造体 Net にまとめる。Net は内部にポインタを持たないので, GPU 発展では
@@ -91,10 +91,11 @@ static long load_npy(const char * path, double * dst, long cap, long n1) {
 }
 
 /* ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ====================== */
-/* Y = ReLU(X W^T + b) : W は R×C, X は m×C, Y は m×R。行 i (サンプル) ごとに独立。 */
+/* 行列積 + バイアス: Y = X W^T + b   (W:R×C, X:m×C, Y:m×R)。行 i (サンプル) ごとに独立。
+   これが「AI の計算の中身」である行列積。重いのでここを並列化する。 */
 template <int R, int C>
-static void dense_relu(const double (&W)[R][C], const double X[][C],
-                       const double (&b)[R], double Y[][R], int m) {
+static void matmul_bias(const double (&W)[R][C], const double X[][C],
+                   const double (&b)[R], double Y[][R], int m) {
   // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
   // BEGIN ANSWER
 #pragma omp parallel for
@@ -103,28 +104,22 @@ static void dense_relu(const double (&W)[R][C], const double X[][C],
     for (int k = 0; k < R; k++) {
       double s = b[k];
       for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
-      Y[i][k] = (s > 0.0) ? s : 0.0;
+      Y[i][k] = s;
     }
 }
 
-/* Y = softmax(X W^T + b) (各行で softmax) : W は R×C, X は m×C, Y は m×R。行ごとに独立。 */
-template <int R, int C>
-static void dense_softmax(const double (&W)[R][C], const double X[][C],
-                          const double (&b)[R], double Y[][R], int m) {
-  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
+/* 活性化: バッチの全要素に適用する軽い処理 (要素ごとなので逐次でよい) */
+template <int N> static void relu(double Y[][N], int m) {
+  for (int i = 0; i < m; i++)
+    for (int k = 0; k < N; k++) if (Y[i][k] < 0.0) Y[i][k] = 0.0;
+}
+template <int N> static void softmax(double Y[][N], int m) {
   for (int i = 0; i < m; i++) {
-    double mx = -1e300;
-    for (int k = 0; k < R; k++) {
-      double s = b[k];
-      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
-      Y[i][k] = s; if (s > mx) mx = s;
-    }
-    double sum = 0.0;
-    for (int k = 0; k < R; k++) { Y[i][k] = exp(Y[i][k] - mx); sum += Y[i][k]; }
-    for (int k = 0; k < R; k++) Y[i][k] /= sum;
+    double mx = Y[i][0];
+    for (int k = 1; k < N; k++) if (Y[i][k] > mx) mx = Y[i][k];
+    double s = 0.0;
+    for (int k = 0; k < N; k++) { Y[i][k] = exp(Y[i][k] - mx); s += Y[i][k]; }
+    for (int k = 0; k < N; k++) Y[i][k] /= s;
   }
 }
 
@@ -136,8 +131,8 @@ static int argmax(const double * v, int n) {
 
 /* バッチ全体を前向き計算: H = ReLU(W1 X + b1), P = softmax(W2 H + b2) */
 static void forward(Net & net, int m) {
-  dense_relu   (net.W1, net.X, net.b1, net.H, m);
-  dense_softmax(net.W2, net.H, net.b2, net.P, m);
+  matmul_bias(net.W1, net.X, net.b1, net.H, m); relu(net.H, m);    /* H = ReLU(W1 X + b1)   */
+  matmul_bias(net.W2, net.H, net.b2, net.P, m); softmax(net.P, m); /* P = softmax(W2 H + b2) */
 }
 
 /* 予測クラス (argmax P) と正解ラベルを比べ, 正解数を返す */
@@ -161,7 +156,7 @@ int main(int argc, char ** argv) {
   load_npy("data/W2.npy", &net.W2[0][0], OUT, HID);
   load_npy("data/b2.npy", net.b2, OUT, 0);
   int NT = (int)load_npy("data/x_test.npy", &net.X[0][0], MAXN, IN);
-              load_npy("data/y_test.npy", net.y, MAXN, 0);
+  load_npy("data/y_test.npy", net.y, MAXN, 0);
   for (long k = 0; k < (long)NT * IN; k++) (&net.X[0][0])[k] /= 255.0;   /* 0..255 -> 0..1 */
 
   /* 全画像をまとめて forward し, 正解数を数える */

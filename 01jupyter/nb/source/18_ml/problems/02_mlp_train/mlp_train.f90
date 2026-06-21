@@ -136,31 +136,9 @@ contains
   end subroutine init_he
 
   ! ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ======================
-  ! Y = ReLU(W X + b)。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i (サンプル) 独立。
-  subroutine dense_relu(W, b, X, Y, m)
-    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
-    real(8), intent(out) :: Y(:,:)
-    integer, intent(in)  :: m
-    integer :: i, k, j
-    real(8) :: s
-    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,k,j,s)
-    ! END ANSWER
-    do i = 1, m
-       do k = 1, size(W,2)
-          s = b(k)
-          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
-          Y(k,i) = max(0.0d0, s)
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-  end subroutine dense_relu
-
-  ! Y = softmax(W X + b) (各列で softmax)。列 i 独立。
-  subroutine dense_softmax(W, b, X, Y, m)
+  ! 行列積 + バイアス: Y = W X + b。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i 独立。
+  ! これが「AI の計算の中身」である行列積。重いのでここを並列化する。
+  subroutine matmul_bias(W, b, X, Y, m)
     real(8), intent(in)  :: W(:,:), b(:), X(:,:)
     real(8), intent(out) :: Y(:,:)
     integer, intent(in)  :: m
@@ -176,31 +154,67 @@ contains
           do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
           Y(k,i) = s
        end do
-       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
-       Y(:,i) = Y(:,i) / sum(Y(:,i))
     end do
     ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
-  end subroutine dense_softmax
+  end subroutine matmul_bias
 
-  ! 出力誤差 dO = P - onehot(y)。列 i 独立。
+  ! 逆向きの行列積 (バイアス無し): dX = W^T dY。W(n_in,n_out), dY(n_out,:), dX(n_in,:)。列 i 独立。
+  subroutine matmul_back(dY, W, dX, m)
+    real(8), intent(in)  :: dY(:,:), W(:,:)
+    real(8), intent(out) :: dX(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, c
+    real(8) :: s
+    ! TODO: 列 i のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,c,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,1)
+          s = 0.0d0
+          do c = 1, size(W,2); s = s + W(k,c)*dY(c,i); end do
+          dX(k,i) = s
+       end do
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine matmul_back
+
+  ! 活性化・要素ごとの軽い処理 (逐次でよい)
+  subroutine relu(Y, m)
+    real(8), intent(inout) :: Y(:,:)
+    integer, intent(in) :: m
+    Y(:,1:m) = max(0.0d0, Y(:,1:m))
+  end subroutine relu
+  subroutine softmax(Y, m)
+    real(8), intent(inout) :: Y(:,:)
+    integer, intent(in) :: m
+    integer :: i
+    do i = 1, m
+       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
+       Y(:,i) = Y(:,i) / sum(Y(:,i))
+    end do
+  end subroutine softmax
+  ! 出力誤差 dO = P - onehot(y)
   subroutine out_grad(P, y, dO, m)
     real(8), intent(in)  :: P(:,:), y(:)
     real(8), intent(out) :: dO(:,:)
     integer, intent(in)  :: m
     integer :: i, c
-    ! TODO: 列 i のループを並列化する (各列は独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,c)
-    ! END ANSWER
     do i = 1, m
        do c = 1, size(P,1); dO(c,i) = P(c,i) - merge(1.0d0, 0.0d0, c-1 == nint(y(i))); end do
     end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
   end subroutine out_grad
+  ! ReLU の逆伝播マスク: Href<=0 のところで dX を 0 にする
+  subroutine relu_mask(dX, Href, m)
+    real(8), intent(inout) :: dX(:,:)
+    real(8), intent(in)    :: Href(:,:)
+    integer, intent(in)    :: m
+    where (Href(:,1:m) <= 0.0d0) dX(:,1:m) = 0.0d0
+  end subroutine relu_mask
 
   ! 重み勾配: G(a,b) = Σ_i U(a,i) V(b,i),  gb(b) = Σ_i V(b,i)。出力 b (列) ごと独立。
   subroutine grad_weight(U, V, G, gb, m)
@@ -228,29 +242,6 @@ contains
     ! END ANSWER
   end subroutine grad_weight
 
-  ! 隠れ誤差 dX(k,i) = (Σ_c W(k,c) dY(c,i))・[Href>0]。列 i 独立。
-  subroutine back_relu(dY, W, Href, dX, m)
-    real(8), intent(in)  :: dY(:,:), W(:,:), Href(:,:)
-    real(8), intent(out) :: dX(:,:)
-    integer, intent(in)  :: m
-    integer :: i, k, c
-    real(8) :: s
-    ! TODO: 列 i のループを並列化する (各列は独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,k,c,s)
-    ! END ANSWER
-    do i = 1, m
-       do k = 1, size(W,1)
-          s = 0.0d0
-          do c = 1, size(W,2); s = s + W(k,c)*dY(c,i); end do
-          dX(k,i) = merge(s, 0.0d0, Href(k,i) > 0.0d0)
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-  end subroutine back_relu
-
   ! バッチの損失と正解数を集計 (列 i 独立, スカラ reduction)
   subroutine eval(net, m, loss, correct)
     type(net_t), intent(in) :: net
@@ -276,17 +267,18 @@ contains
   subroutine forward(net, m)
     type(net_t), intent(inout) :: net
     integer, intent(in) :: m
-    call dense_relu   (net%W1, net%b1, net%X, net%H, m)   ! H = ReLU(W1 X + b1)
-    call dense_softmax(net%W2, net%b2, net%H, net%P, m)   ! P = softmax(W2 H + b2)
+    call matmul_bias(net%W1, net%b1, net%X, net%H, m); call relu(net%H, m)    ! H = ReLU(W1 X + b1)
+    call matmul_bias(net%W2, net%b2, net%H, net%P, m); call softmax(net%P, m) ! P = softmax(W2 H + b2)
   end subroutine forward
 
   subroutine backward(net, m)
     type(net_t), intent(inout) :: net
     integer, intent(in) :: m
-    call out_grad   (net%P, net%y, net%dO, m)                 ! dO = P - onehot(y)
-    call grad_weight(net%H, net%dO, net%gW2, net%gb2, m)      ! gW2 = Σ_i H dO^T, gb2 = Σ dO
-    call back_relu  (net%dO, net%W2, net%H, net%dH, m)        ! dH = (W2^T dO)・[H>0]
-    call grad_weight(net%X, net%dH, net%gW1, net%gb1, m)      ! gW1 = Σ_i X dH^T, gb1 = Σ dH
+    call out_grad   (net%P, net%y, net%dO, m)            ! dO = P - onehot(y)
+    call grad_weight(net%H, net%dO, net%gW2, net%gb2, m) ! gW2 = Σ_i H dO^T, gb2 = Σ dO
+    call matmul_back(net%dO, net%W2, net%dH, m)          ! dH = W2^T dO
+    call relu_mask  (net%dH, net%H, m)                   ! dH を [H>0] でマスク
+    call grad_weight(net%X, net%dH, net%gW1, net%gb1, m) ! gW1 = Σ_i X dH^T, gb1 = Σ dH
   end subroutine backward
 
   subroutine sgd_update(net, m, lr)

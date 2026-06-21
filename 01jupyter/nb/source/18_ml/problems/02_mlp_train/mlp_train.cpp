@@ -9,12 +9,14 @@
 
    ミニバッチ (m 枚) を「行列」としてまとめて流す。各ステップはバッチ中の全サンプルを
    一度に処理する行列演算で, forward / backward は下のプリミティブを呼ぶだけ:
-     forward:  H = ReLU(W1 X + b1)   = dense_relu
-               P = softmax(W2 H + b2) = dense_softmax
-     backward: dO = P - onehot(y)     = out_grad
-               gW2,gb2 = (dO,H から)  = grad_weight   (= dO^T H, 列和)
-               dH = (dO W2)・[H>0]    = back_relu
-               gW1,gb1 = (dH,X から)  = grad_weight
+     forward:  H = matmul_bias(W1,X,b1); relu(H)
+               P = matmul_bias(W2,H,b2); softmax(P)
+     backward: dO = out_grad(P,y)                  (= P - onehot(y))
+               gW2,gb2 = grad_weight(dO,H)         (= dO^T H, 列和)
+               dH = matmul_back(dO,W2); relu_mask(dH,H)
+               gW1,gb1 = grad_weight(dH,X)
+   行列積 (matmul_bias / matmul_back / grad_weight) を活性化 (relu/softmax/…) から分け,
+   重い行列積を並列化する (活性化は要素ごとで軽いので逐次)。
      更新:     W -= (lr/m) gW
    勾配は行列積で求まり, サンプル(バッチ)方向の和は行列積の内側の縮約になる。よって
    並列化は各プリミティブの独立な出力方向ループの parallel for だけでよく, 勾配への
@@ -108,10 +110,11 @@ static void write_npy(const char * path, const double * data, long s0, long s1) 
 }
 
 /* ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ====================== */
-/* Y = ReLU(X W^T + b) : W は R×C, X は m×C, Y は m×R。行 i (サンプル) ごとに独立。 */
+/* 行列積 + バイアス: Y = X W^T + b   (W:R×C, X:m×C, Y:m×R)。行 i (サンプル) ごとに独立。
+   これが「AI の計算の中身」である行列積。重いのでここを並列化する。 */
 template <int R, int C>
-static void dense_relu(const double (&W)[R][C], const double X[][C],
-                       const double (&b)[R], double Y[][R], int m) {
+static void matmul_bias(const double (&W)[R][C], const double X[][C],
+                   const double (&b)[R], double Y[][R], int m) {
   // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
   // BEGIN ANSWER
 #pragma omp parallel for
@@ -120,40 +123,48 @@ static void dense_relu(const double (&W)[R][C], const double X[][C],
     for (int k = 0; k < R; k++) {
       double s = b[k];
       for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
-      Y[i][k] = (s > 0.0) ? s : 0.0;
+      Y[i][k] = s;
     }
 }
 
-/* Y = softmax(X W^T + b) (各行で softmax) : W は R×C, X は m×C, Y は m×R。行ごとに独立。 */
+/* 逆向きの行列積 (バイアス無し): dX = dY W   (dY:m×R, W:R×C, dX:m×C)。行 i ごとに独立。 */
 template <int R, int C>
-static void dense_softmax(const double (&W)[R][C], const double X[][C],
-                          const double (&b)[R], double Y[][R], int m) {
-  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int i = 0; i < m; i++) {
-    double mx = -1e300;
-    for (int k = 0; k < R; k++) {
-      double s = b[k];
-      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
-      Y[i][k] = s; if (s > mx) mx = s;
-    }
-    double sum = 0.0;
-    for (int k = 0; k < R; k++) { Y[i][k] = exp(Y[i][k] - mx); sum += Y[i][k]; }
-    for (int k = 0; k < R; k++) Y[i][k] /= sum;
-  }
-}
-
-/* 出力誤差 dO = P - onehot(y) : 行 i ごとに独立 */
-template <int R>
-static void out_grad(const double P[][R], const double * y, double dO[][R], int m) {
+static void matmul_back(const double dY[][R], const double (&W)[R][C], double dX[][C], int m) {
   // TODO: 行 i のループを並列化する (各行は独立)。
   // BEGIN ANSWER
 #pragma omp parallel for
   // END ANSWER
   for (int i = 0; i < m; i++)
-    for (int c = 0; c < R; c++) dO[i][c] = P[i][c] - (c == (int)y[i] ? 1.0 : 0.0);
+    for (int j = 0; j < C; j++) {
+      double s = 0.0;
+      for (int k = 0; k < R; k++) s += dY[i][k] * W[k][j];
+      dX[i][j] = s;
+    }
+}
+
+/* 活性化・要素ごとの軽い処理 (逐次でよい) */
+template <int N> static void relu(double Y[][N], int m) {
+  for (int i = 0; i < m; i++)
+    for (int k = 0; k < N; k++) if (Y[i][k] < 0.0) Y[i][k] = 0.0;
+}
+template <int N> static void softmax(double Y[][N], int m) {
+  for (int i = 0; i < m; i++) {
+    double mx = Y[i][0];
+    for (int k = 1; k < N; k++) if (Y[i][k] > mx) mx = Y[i][k];
+    double s = 0.0;
+    for (int k = 0; k < N; k++) { Y[i][k] = exp(Y[i][k] - mx); s += Y[i][k]; }
+    for (int k = 0; k < N; k++) Y[i][k] /= s;
+  }
+}
+/* 出力誤差 dO = P - onehot(y) */
+template <int N> static void out_grad(const double P[][N], const double * y, double dO[][N], int m) {
+  for (int i = 0; i < m; i++)
+    for (int c = 0; c < N; c++) dO[i][c] = P[i][c] - (c == (int)y[i] ? 1.0 : 0.0);
+}
+/* ReLU の逆伝播マスク: dX[i][k] を Href[i][k]<=0 のところで 0 にする (in-place) */
+template <int N> static void relu_mask(double dX[][N], const double Href[][N], int m) {
+  for (int i = 0; i < m; i++)
+    for (int k = 0; k < N; k++) if (Href[i][k] <= 0.0) dX[i][k] = 0.0;
 }
 
 /* 重み勾配: G = A^T B (バッチ和), gb = 列和(A)。A は m×R, B は m×C, G は R×C, gb は R。
@@ -175,22 +186,6 @@ static void grad_weight(const double A[][R], const double B[][C],
       G[k][j] = s;
     }
   }
-}
-
-/* 隠れ誤差 dX = (dY W)・[Href>0] : dY は m×R, W は R×C, Href/dX は m×C。行 i ごとに独立。 */
-template <int R, int C>
-static void back_relu(const double dY[][R], const double (&W)[R][C],
-                      const double Href[][C], double dX[][C], int m) {
-  // TODO: 行 i のループを並列化する (各行は独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int i = 0; i < m; i++)
-    for (int j = 0; j < C; j++) {
-      double s = 0.0;
-      for (int k = 0; k < R; k++) s += dY[i][k] * W[k][j];
-      dX[i][j] = (Href[i][j] > 0.0) ? s : 0.0;
-    }
 }
 
 static int argmax(const double * v, int n) {
@@ -216,15 +211,16 @@ static LossCorrect eval(Net & net, int m) {
 
 /* ====================== forward / backward / 更新 (プリミティブを呼ぶだけ) ====================== */
 static void forward(Net & net, int m) {
-  dense_relu   (net.W1, net.X, net.b1, net.H, m);   /* H = ReLU(W1 X + b1) */
-  dense_softmax(net.W2, net.H, net.b2, net.P, m);   /* P = softmax(W2 H + b2) */
+  matmul_bias(net.W1, net.X, net.b1, net.H, m); relu(net.H, m);    /* H = ReLU(W1 X + b1)   */
+  matmul_bias(net.W2, net.H, net.b2, net.P, m); softmax(net.P, m); /* P = softmax(W2 H + b2) */
 }
 
 static void backward(Net & net, int m) {
-  out_grad   (net.P, net.y, net.dO, m);                  /* dO = P - onehot(y)        */
-  grad_weight(net.dO, net.H, net.gW2, net.gb2, m);       /* gW2 = dO^T H, gb2 = Σ dO  */
-  back_relu  (net.dO, net.W2, net.H, net.dH, m);         /* dH = (dO W2)・[H>0]       */
-  grad_weight(net.dH, net.X, net.gW1, net.gb1, m);       /* gW1 = dH^T X, gb1 = Σ dH  */
+  out_grad   (net.P, net.y, net.dO, m);            /* dO = P - onehot(y)            */
+  grad_weight(net.dO, net.H, net.gW2, net.gb2, m); /* gW2 = dO^T H, gb2 = Σ dO      */
+  matmul_back(net.dO, net.W2, net.dH, m);          /* dH = dO W2                    */
+  relu_mask  (net.dH, net.H, m);                   /* dH を [H>0] でマスク          */
+  grad_weight(net.dH, net.X, net.gW1, net.gb1, m); /* gW1 = dH^T X, gb1 = Σ dH      */
 }
 
 static void sgd_update(Net & net, int m, double lr) {
