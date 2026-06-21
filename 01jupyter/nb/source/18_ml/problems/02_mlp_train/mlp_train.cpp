@@ -15,10 +15,26 @@
    更新:     ミニバッチ内の勾配を総和し, W -= lr * grad/batch。
    並列化対象は「ミニバッチ内の全サンプルにわたる勾配の和」(配列 reduction)。
 
-   入出力はNumPy標準の .npy 形式 (ヘッダ + 生バイナリ):
+   重み・画像は2次元配列 Mat (A(i,j) でアクセス)。ただし配列 reduction の対象 (勾配)
+   は OpenMP の配列セクション構文に合わせて生のポインタ (gW1[...]) で扱う。
+   入出力はNumPy標準の .npy 形式:
    - 読み: data/x_train.npy (uint8 [N,784]), data/y_train.npy (int32 [N])
    - 書き: data/W1.npy, b1.npy, W2.npy, b2.npy (float64) -> 00_mnist_infer が読む
    read_npy / write_npy は下に用意してある (I/O は本問題の主眼ではない)。 */
+
+/* ---- 連続メモリの2次元配列 (row-major: A(i,j) = a[i*cols + j]) ---- */
+struct Mat {
+  long rows, cols;
+  double * a;
+  Mat(long r, long c)             : rows(r), cols(c), a(new double[r * c]) {}
+  Mat(long r, long c, double * p) : rows(r), cols(c), a(p) {}   /* 既存バッファを引き取る */
+  ~Mat() { delete[] a; }
+  Mat(const Mat &) = delete;                  /* コピー禁止 (二重 delete を防ぐ) */
+  Mat & operator=(const Mat &) = delete;
+  double & operator()(long i, long j)       { return a[i * cols + j]; }
+  double   operator()(long i, long j) const { return a[i * cols + j]; }
+  double * data() { return a; }
+};
 
 /* ---- .npy 読み込み: 任意の数値型を double 配列に読み込む (C順, 1〜2次元) ---- */
 static double * read_npy(const char * path, long shape[2], int * ndim) {
@@ -29,7 +45,7 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
     printf("%s は .npy ではありません\n", path); exit(1);
   }
   int hlen = magic[8] | (magic[9] << 8);           /* ヘッダ(辞書文字列)の長さ */
-  char * hdr = (char *)malloc(hlen + 1);
+  char * hdr = new char[hlen + 1];
   fread(hdr, 1, hlen, f); hdr[hlen] = '\0';
   /* dtype (例: '<f8','|u1','<i4','<i8') と shape をヘッダ文字列から取り出す */
   char descr[8] = {0};
@@ -39,28 +55,27 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   char * sp = strstr(hdr, "shape"); sp = strchr(sp, '(') + 1;
   s0 = atol(sp);
   char * comma = strchr(sp, ',');
-  /* "(N,)" は1次元, "(N, M)" は2次元 */
   char * after = comma + 1; while (*after == ' ') after++;
   if (*after != ')') { s1 = atol(after); *ndim = 2; } else { s1 = 1; *ndim = 1; }
   shape[0] = s0; shape[1] = s1;
   long n = s0 * (*ndim == 2 ? s1 : 1);
-  free(hdr);
+  delete[] hdr;
 
-  double * out = (double *)malloc(sizeof(double) * n);
+  double * out = new double[n];
   if (!strcmp(descr, "<f8")) {
     fread(out, sizeof(double), n, f);
   } else if (!strcmp(descr, "<f4")) {
-    float * t = (float *)malloc(sizeof(float) * n); fread(t, sizeof(float), n, f);
-    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+    float * t = new float[n]; fread(t, sizeof(float), n, f);
+    for (long i = 0; i < n; i++) { out[i] = t[i]; } delete[] t;
   } else if (!strcmp(descr, "|u1")) {
-    unsigned char * t = (unsigned char *)malloc(n); fread(t, 1, n, f);
-    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+    unsigned char * t = new unsigned char[n]; fread(t, 1, n, f);
+    for (long i = 0; i < n; i++) { out[i] = t[i]; } delete[] t;
   } else if (!strcmp(descr, "<i4")) {
-    int * t = (int *)malloc(sizeof(int) * n); fread(t, sizeof(int), n, f);
-    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+    int * t = new int[n]; fread(t, sizeof(int), n, f);
+    for (long i = 0; i < n; i++) { out[i] = t[i]; } delete[] t;
   } else if (!strcmp(descr, "<i8")) {
-    long long * t = (long long *)malloc(sizeof(long long) * n); fread(t, sizeof(long long), n, f);
-    for (long i = 0; i < n; i++) out[i] = (double)t[i]; free(t);
+    long long * t = new long long[n]; fread(t, sizeof(long long), n, f);
+    for (long i = 0; i < n; i++) { out[i] = (double)t[i]; } delete[] t;
   } else {
     printf("%s: 未対応の dtype %s\n", path, descr); exit(1);
   }
@@ -110,31 +125,30 @@ int main(int argc, char ** argv) {
 
   /* --- 訓練データの読み込み (画素 0..255 -> 0..1 に正規化) --- */
   long sx[2], sy[2]; int nd;
-  double * Xu = read_npy("data/x_train.npy", sx, &nd);   /* [N,784] */
-  double * yd = read_npy("data/y_train.npy", sy, &nd);   /* [N] */
+  double * xr = read_npy("data/x_train.npy", sx, &nd);   /* [N,784] */
   long N = sx[0];
-  double * X = (double *)malloc(sizeof(double) * N * IN);
-  int    * y = (int *)malloc(sizeof(int) * N);
-  for (long i = 0; i < N * IN; i++) X[i] = Xu[i] / 255.0;
-  for (long i = 0; i < N; i++)      y[i] = (int)yd[i];
-  free(Xu); free(yd);
+  for (long i = 0; i < N * IN; i++) xr[i] /= 255.0;
+  Mat X(N, IN, xr);
+  double * yd = read_npy("data/y_train.npy", sy, &nd);   /* [N] */
+  int * y = new int[N];
+  for (long i = 0; i < N; i++) y[i] = (int)yd[i];
+  delete[] yd;
 
   /* --- パラメータ初期化 (He 初期化, バイアスは 0) --- */
-  double * W1 = (double *)malloc(sizeof(double) * HID * IN);
-  double * b1 = (double *)malloc(sizeof(double) * HID);
-  double * W2 = (double *)malloc(sizeof(double) * OUT * HID);
-  double * b2 = (double *)malloc(sizeof(double) * OUT);
+  Mat W1(HID, IN), W2(OUT, HID);
+  double * b1 = new double[HID];
+  double * b2 = new double[OUT];
   double s1 = sqrt(2.0 / IN), s2 = sqrt(2.0 / HID);
-  for (long k = 0; k < (long)HID * IN; k++)  W1[k] = (draw_rand01(k, 1) - 0.5) * 2.0 * s1;
+  for (long k = 0; k < (long)HID * IN; k++)  W1.data()[k] = (draw_rand01(k, 1) - 0.5) * 2.0 * s1;
   for (int k = 0; k < HID; k++)              b1[k] = 0.0;
-  for (long k = 0; k < (long)OUT * HID; k++) W2[k] = (draw_rand01(k, 2) - 0.5) * 2.0 * s2;
+  for (long k = 0; k < (long)OUT * HID; k++) W2.data()[k] = (draw_rand01(k, 2) - 0.5) * 2.0 * s2;
   for (int k = 0; k < OUT; k++)              b2[k] = 0.0;
 
-  /* 勾配の総和を入れる配列 */
-  double * gW1 = (double *)malloc(sizeof(double) * HID * IN);
-  double * gb1 = (double *)malloc(sizeof(double) * HID);
-  double * gW2 = (double *)malloc(sizeof(double) * OUT * HID);
-  double * gb2 = (double *)malloc(sizeof(double) * OUT);
+  /* 勾配の総和を入れる配列。配列 reduction の対象なので生のポインタで扱う。 */
+  double * gW1 = new double[HID * IN];
+  double * gb1 = new double[HID];
+  double * gW2 = new double[OUT * HID];
+  double * gb2 = new double[OUT];
 
   double loss = 0.0; long correct = 0;
   double t0 = omp_get_wtime();
@@ -154,19 +168,16 @@ int main(int argc, char ** argv) {
 #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2[:OUT*HID],gb1[:HID],gW1[:HID*IN])
       // END ANSWER
       for (long i = b0; i < b1n; i++) {
-        const double * x = &X[i * IN];
         double h[128];                          /* HID=128 */
         for (int k = 0; k < HID; k++) {         /* h = ReLU(W1 x + b1) */
           double z = b1[k];
-          const double * w = &W1[(long)k * IN];
-          for (int j = 0; j < IN; j++) z += w[j] * x[j];
+          for (int j = 0; j < IN; j++) z += W1(k, j) * X(i, j);
           h[k] = (z > 0.0) ? z : 0.0;
         }
         double o[10], omax = -1e300;            /* o = W2 h + b2 */
         for (int c = 0; c < OUT; c++) {
           double z = b2[c];
-          const double * w = &W2[(long)c * HID];
-          for (int k = 0; k < HID; k++) z += w[k] * h[k];
+          for (int k = 0; k < HID; k++) z += W2(c, k) * h[k];
           o[c] = z; if (z > omax) omax = z;
         }
         double sum = 0.0;                        /* p = softmax(o) */
@@ -183,26 +194,27 @@ int main(int argc, char ** argv) {
         for (int c = 0; c < OUT; c++) dout[c] = o[c] - (c == y[i] ? 1.0 : 0.0);
         for (int c = 0; c < OUT; c++) {
           gb2[c] += dout[c];
-          double * gw = &gW2[(long)c * HID];
-          for (int k = 0; k < HID; k++) gw[k] += dout[c] * h[k];
+          for (int k = 0; k < HID; k++) gW2[c * HID + k] += dout[c] * h[k];
         }
         for (int k = 0; k < HID; k++) {          /* dh = (W2^T do)・[h>0] */
           if (h[k] <= 0.0) continue;
           double dh = 0.0;
-          for (int c = 0; c < OUT; c++) dh += W2[(long)c * HID + k] * dout[c];
+          for (int c = 0; c < OUT; c++) dh += W2(c, k) * dout[c];
           gb1[k] += dh;
-          double * gw = &gW1[(long)k * IN];
-          const double * x = &X[i * IN];
-          for (int j = 0; j < IN; j++) gw[j] += dh * x[j];
+          for (int j = 0; j < IN; j++) gW1[k * IN + j] += dh * X(i, j);
         }
       }
 
       /* 更新 (バッチ内勾配を平均して降下) */
       double sc = lr / (double)m;
-      for (long k = 0; k < (long)HID * IN; k++)  W1[k] -= sc * gW1[k];
-      for (int k = 0; k < HID; k++)              b1[k] -= sc * gb1[k];
-      for (long k = 0; k < (long)OUT * HID; k++) W2[k] -= sc * gW2[k];
-      for (int k = 0; k < OUT; k++)              b2[k] -= sc * gb2[k];
+      for (int k = 0; k < HID; k++) {
+        for (int j = 0; j < IN; j++) W1(k, j) -= sc * gW1[k * IN + j];
+        b1[k] -= sc * gb1[k];
+      }
+      for (int c = 0; c < OUT; c++) {
+        for (int k = 0; k < HID; k++) W2(c, k) -= sc * gW2[c * HID + k];
+        b2[c] -= sc * gb2[c];
+      }
     }
     loss /= (double)N;
     if (ep % 5 == 0 || ep == E - 1)
@@ -215,13 +227,13 @@ int main(int argc, char ** argv) {
   printf("elapsed = %.3f sec\n", elapsed);
 
   /* --- 学習済みの重みを .npy で書き出す (00_mnist_infer が読む) --- */
-  write_npy("data/W1.npy", W1, HID, IN);
+  write_npy("data/W1.npy", W1.data(), HID, IN);
   write_npy("data/b1.npy", b1, HID, 0);
-  write_npy("data/W2.npy", W2, OUT, HID);
+  write_npy("data/W2.npy", W2.data(), OUT, HID);
   write_npy("data/b2.npy", b2, OUT, 0);
   printf("重みを data/W1.npy, b1.npy, W2.npy, b2.npy に保存しました\n");
 
-  free(X); free(y); free(W1); free(b1); free(W2); free(b2);
-  free(gW1); free(gb1); free(gW2); free(gb2);
+  delete[] b1; delete[] b2; delete[] y;
+  delete[] gW1; delete[] gb1; delete[] gW2; delete[] gb2;
   return 0;
 }
