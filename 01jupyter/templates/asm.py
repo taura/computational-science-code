@@ -30,7 +30,7 @@ import wisteria_submit
 
 """ code w """
 %%writefile_ {problem}.cpp
-""" include {out_dir}/{nn_topic}/problems/{nn_problem}/{problem}.cpp """
+""" include {in_dir}/{nn_topic}/problems/{nn_problem}/to_students/{problem}.cpp """
 """ """
 
 """ md
@@ -64,7 +64,7 @@ cat {problem}.s
 
 """ codex w
 %%writefile_ {problem}.f90
-""" include {out_dir}/{nn_topic}/problems/{nn_problem}/{problem}.f90 """
+""" include {in_dir}/{nn_topic}/problems/{nn_problem}/to_students/{problem}.f90 """
 """
 
 """ md

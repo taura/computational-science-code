@@ -67,13 +67,17 @@ $(out_dir)/$(nn_topic)/problems/$(nn_problem)/dir :
 	mkdir -p $$@
 endef
 
-# deploy .cpp/.f90 files
+# deploy .cpp/.f90 files (学生向けの穴あきコード)
+# 答え部分を隠した穴あきコードを in_dir 側の to_students/ に書き出す.
+# これは .ipynb に %%writefile_ で埋め込まれる中身であり, 出力 (out_dir) には
+# 単体ファイルとしては置かない (.ipynb に埋め込み済みなので冗長なため).
 # e.g.,
-# nb/source/01_intro/problems/00_average/average.{cpp,f90} -> notebooks/source/01_intro/problems/00_average/average.{cpp,f90}
+# nb/source/01_intro/problems/00_average/average.{cpp,f90}
+#   -> nb/source/01_intro/problems/00_average/to_students/average.{cpp,f90}
 define deploy_code
-$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang)
-$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) strip_answer.py
-	./strip_answer.py $$< > $$@
+$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(in_dir)/$(nn_topic)/problems/$(nn_problem)/to_students/$(problem).$(lang)
+$(in_dir)/$(nn_topic)/problems/$(nn_problem)/to_students/$(problem).$(lang) :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) strip_answer.py
+	mkdir -p $(in_dir)/$(nn_topic)/problems/$(nn_problem)/to_students && ./strip_answer.py $$< > $$@
 endef
 
 # 問題ディレクトリに data/ があれば (MNIST など) 出力側へまるごとコピーする

@@ -17,3 +17,6 @@ __pycache__/
 
 # 学生向け生成物は別レポ (01jupyter/notebooks/source) なので親では追跡しない
 notebooks/source/
+
+# 穴あきコード (strip_answer.py の生成物) は .ipynb に埋め込まれるので追跡しない
+nb/source/**/to_students/
