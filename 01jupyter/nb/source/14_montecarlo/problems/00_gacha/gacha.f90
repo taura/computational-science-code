@@ -58,7 +58,8 @@ program gacha
 
   ! T 回の試行は互いに独立。各試行の引き回数を集計する。
   t0 = omp_get_wtime()
-  ! BEGIN ANSWER: 各試行は独立なので !$omp parallel do reduction(+:total,totalsq) で並列化・集計せよ.
+  ! TODO: この試行ループを並列化して集計する (各試行は独立)。
+  ! BEGIN ANSWER
   !$omp parallel do private(d) reduction(+:total,totalsq)
   ! END ANSWER
   do t_ = 0, T - 1
@@ -66,7 +67,7 @@ program gacha
      total = total + d
      totalsq = totalsq + d * d
   end do
-  ! BEGIN ANSWER: 上の parallel do を閉じる !$omp end parallel do を書け.
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   elapsed = omp_get_wtime() - t0

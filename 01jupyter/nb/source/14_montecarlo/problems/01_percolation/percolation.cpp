@@ -19,9 +19,9 @@ static inline double draw_rand01(long long seed, long long k) {
    たどり着ければ 1 (浸透した), さもなくば 0 を返す。深さ優先探索 (スタック) で判定。 */
 int one_trial(int L, double p, long long seed) {
   int n = L * L;
-  unsigned char * open = (unsigned char *)malloc(n);
-  unsigned char * vis  = (unsigned char *)calloc(n, 1);
-  int *           stk  = (int *)malloc(sizeof(int) * n);
+  unsigned char * open = new unsigned char[n];
+  unsigned char * vis  = new unsigned char[n]();    /* () で 0 初期化 */
+  int *           stk  = new int[n];
   for (int i = 0; i < n; i++) open[i] = (draw_rand01(seed, i) < p) ? 1 : 0;
 
   int sp = 0;
@@ -42,7 +42,7 @@ int one_trial(int L, double p, long long seed) {
       if (open[nidx] && !vis[nidx]) { vis[nidx] = 1; stk[sp++] = nidx; }
     }
   }
-  free(open); free(vis); free(stk);
+  delete[] open; delete[] vis; delete[] stk;
   return perc;
 }
 
@@ -55,7 +55,8 @@ int main(int argc, char ** argv) {
   /* T 回の試行は互いに独立。浸透した回数を数える。
      試行ごとに探索量が違う (浸透すると途中で打ち切る) ので schedule(dynamic) が有効。 */
   double t0 = omp_get_wtime();
-  // BEGIN ANSWER: 各試行は独立。#pragma omp parallel for reduction(+:perc) schedule(dynamic) で並列化・集計せよ.
+  // TODO: この試行ループを並列化する (各試行は独立)。
+  // BEGIN ANSWER
 #pragma omp parallel for reduction(+:perc) schedule(dynamic)
   // END ANSWER
   for (long t = 0; t < T; t++) {

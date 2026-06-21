@@ -85,13 +85,14 @@ program percolation
   ! T 回の試行は互いに独立。浸透した回数を数える。
   ! 試行ごとに探索量が違うので schedule(dynamic) が有効。
   t0 = omp_get_wtime()
-  ! BEGIN ANSWER: 各試行は独立。!$omp parallel do reduction(+:perc) schedule(dynamic) で並列化・集計せよ.
+  ! TODO: この試行ループを並列化する (各試行は独立)。
+  ! BEGIN ANSWER
   !$omp parallel do reduction(+:perc) schedule(dynamic)
   ! END ANSWER
   do t_ = 0, T - 1
      perc = perc + one_trial(L, p, t_)
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   elapsed = omp_get_wtime() - t0
