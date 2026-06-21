@@ -248,11 +248,14 @@ int main(int argc, char ** argv) {
   double * b2 = new double[OUT]();
   init_he(W1, 1); init_he(W2, 2);
 
-  /* 勾配の総和を入れる配列 (配列 reduction の対象なので生ポインタ) */
-  double * gW1 = new double[HID * IN];
+  /* 勾配の総和を入れる配列。重みと同じ形なので gW は Mat, gb はベクトル。 */
+  Mat gW1(HID, IN), gW2(OUT, HID);
   double * gb1 = new double[HID];
-  double * gW2 = new double[OUT * HID];
   double * gb2 = new double[OUT];
+  /* 配列 reduction は配列セクション構文が「生ポインタ/配列名」を要求するため,
+     行列の中身を指すポインタ (data()) を使う (gW1d[:HID*IN] のように書く)。 */
+  double * gW1d = gW1.data();
+  double * gW2d = gW2.data();
 
   double loss = 0.0; long correct = 0;
   double t0 = omp_get_wtime();
@@ -261,23 +264,23 @@ int main(int argc, char ** argv) {
     for (long b0 = 0; b0 < N; b0 += BS) {
       long b1n = (b0 + BS < N) ? b0 + BS : N;      /* バッチ [b0, b1n) */
       long m = b1n - b0;
-      memset(gW1, 0, sizeof(double) * HID * IN); memset(gb1, 0, sizeof(double) * HID);
-      memset(gW2, 0, sizeof(double) * OUT * HID); memset(gb2, 0, sizeof(double) * OUT);
+      memset(gW1d, 0, sizeof(double) * HID * IN); memset(gb1, 0, sizeof(double) * HID);
+      memset(gW2d, 0, sizeof(double) * OUT * HID); memset(gb2, 0, sizeof(double) * OUT);
 
       /* バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
          損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。 */
-      // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2[:OUT*HID],gb1[:HID],gW1[:HID*IN]).
-#pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2[:OUT*HID],gb1[:HID],gW1[:HID*IN])
+      // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2d[:OUT*HID],gb1[:HID],gW1d[:HID*IN]).
+#pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2d[:OUT*HID],gb1[:HID],gW1d[:HID*IN])
       // END ANSWER
       for (long i = b0; i < b1n; i++) {
         LossCorrect r = forward_backward(W1, b1, W2, b2, &X(i, 0), (int)y[i],
-                                         gW1, gb1, gW2, gb2);
+                                         gW1d, gb1, gW2d, gb2);
         loss += r.loss; correct += r.correct;
       }
 
       double sc = lr / (double)m;                  /* バッチ内勾配を平均して降下 */
-      sgd_update(W1, b1, gW1, gb1, sc);
-      sgd_update(W2, b2, gW2, gb2, sc);
+      sgd_update(W1, b1, gW1d, gb1, sc);
+      sgd_update(W2, b2, gW2d, gb2, sc);
     }
     loss /= (double)N;
     if (ep % 5 == 0 || ep == E - 1)
@@ -297,6 +300,6 @@ int main(int argc, char ** argv) {
   printf("重みを data/W1.npy, b1.npy, W2.npy, b2.npy に保存しました\n");
 
   delete[] b1; delete[] b2; delete[] y;
-  delete[] gW1; delete[] gb1; delete[] gW2; delete[] gb2;
+  delete[] gb1; delete[] gb2;             /* gW1,gW2 は Mat のデストラクタが解放 */
   return 0;
 }
