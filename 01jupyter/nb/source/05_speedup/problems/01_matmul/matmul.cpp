@@ -19,7 +19,8 @@ int main(int argc, char ** argv) {
   /* 計測開始 */
   double t0 = omp_get_wtime();
   /* 計算本体: 3 重ループ. C[i][j] += A[i][k] * B[k][j] */
-  // BEGIN ANSWER: いちばん外側の i ループの直前に #pragma omp parallel for を1行追加し, 行ごとに並列化せよ.
+  // TODO: いちばん外側の i ループの直前に #pragma omp parallel for を1行追加し, 行ごとに並列化せよ.
+  // BEGIN ANSWER
 #pragma omp parallel for
   // END ANSWER
   for (long i = 0; i < n; i++) {

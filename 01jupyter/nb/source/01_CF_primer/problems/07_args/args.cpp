@@ -6,7 +6,8 @@ int main(int argc, char ** argv) {
      引数が無いときの既定値は n=3, x=2.0 */
   int n = 3;
   double x = 2.0;
-  // BEGIN ANSWER: argv[1] を atoi で n に, argv[2] を atof で x に変換せよ (引数があるときだけ).
+  // TODO: argv[1] を atoi で n に, argv[2] を atof で x に変換せよ (引数があるときだけ).
+  // BEGIN ANSWER
   if (argc > 1) n = atoi(argv[1]);
   if (argc > 2) x = atof(argv[2]);
   // END ANSWER

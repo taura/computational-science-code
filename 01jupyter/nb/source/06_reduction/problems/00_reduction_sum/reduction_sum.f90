@@ -7,14 +7,15 @@ contains
     integer(8) :: i
     s = 0.0d0
     dx = (b - a) / real(n, 8)
-    ! BEGIN ANSWER: 下のループを reduction(+:s) を用いて並列化し, 総和の競合を解消せよ.
+    ! TODO: 下のループを reduction(+:s) を用いて並列化し, 総和の競合を解消せよ.
+    ! BEGIN ANSWER
     !$omp parallel do private(x) reduction(+:s)
     ! END ANSWER
     do i = 0, n - 1
        x = a + i * dx
        s = s + 1 / (1 + x * x)
     end do
-    ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+    ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
     s = s * dx

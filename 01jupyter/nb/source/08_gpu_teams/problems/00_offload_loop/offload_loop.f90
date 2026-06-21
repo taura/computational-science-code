@@ -9,14 +9,15 @@ program offload_loop
   else
      m = 8
   end if
-  ! BEGIN ANSWER: 下の do ループを !$omp target teams distribute parallel do ... !$omp end target teams distribute parallel do で囲み, ループをGPU上の多数のチーム×スレッドで並列実行させよ. (結果を表示するだけなので map 節は不要)
+  ! TODO: 下の do ループを !$omp target teams distribute parallel do ... !$omp end target teams distribute parallel do で囲み, ループをGPU上の多数のチーム×スレッドで並列実行させよ. (結果を表示するだけなので map 節は不要)
+  ! BEGIN ANSWER
   !$omp target teams distribute parallel do
   ! END ANSWER
   do i = 1, m
      print "(a,i0,a,i0,a,i0)", "i = ", i, "  executed by team ", &
           omp_get_team_num(), "  thread ", omp_get_thread_num()
   end do
-  ! BEGIN ANSWER: 上で始めた target teams distribute parallel do 領域を閉じる (!$omp end target teams distribute parallel do).
+  ! BEGIN ANSWER
   !$omp end target teams distribute parallel do
   ! END ANSWER
 end program offload_loop

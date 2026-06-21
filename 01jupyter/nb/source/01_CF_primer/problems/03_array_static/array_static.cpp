@@ -9,7 +9,8 @@ int main() {
   }
   /* 合計を求める */
   double s = 0.0;
-  // BEGIN ANSWER: 配列 a の全要素を s に足し込むループを書け.
+  // TODO: 配列 a の全要素を s に足し込むループを書け.
+  // BEGIN ANSWER
   for (int i = 0; i < n; i++) {
     s += a[i];
   }

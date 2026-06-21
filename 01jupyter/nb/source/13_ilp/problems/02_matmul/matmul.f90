@@ -18,7 +18,8 @@ program matmul
   do i = 1, n
      do k = 1, n
         a_ik = A(i,k)
-        ! BEGIN ANSWER: 最内 j ループを omp simd でSIMD化せよ (下の do の直前に1行追加).
+        ! TODO: 最内 j ループを omp simd でSIMD化せよ (下の do の直前に1行追加).
+        ! BEGIN ANSWER
         !$omp simd
         ! END ANSWER
         do j = 1, n

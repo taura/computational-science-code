@@ -7,7 +7,8 @@ contains
     real(8) :: p
     integer :: i
     p = 1.0d0
-    ! BEGIN ANSWER: x を n 回掛けて x^n を計算し p に求めよ (ループを書く).
+    ! TODO: x を n 回掛けて x^n を計算し p に求めよ (ループを書く).
+    ! BEGIN ANSWER
     do i = 1, n
        p = p * x
     end do

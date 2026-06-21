@@ -21,7 +21,8 @@ int main(int argc, char **argv) {
   }
 
   // 行列ベクトル積 y = A x
-  // BEGIN ANSWER: 下の行 (外側の i ループ) の直前に #pragma omp parallel for を1行追加し, 行ごとの計算をスレッドで分担せよ.
+  // TODO: 下の行 (外側の i ループ) の直前に #pragma omp parallel for を1行追加し, 行ごとの計算をスレッドで分担せよ.
+  // BEGIN ANSWER
 #pragma omp parallel for
   // END ANSWER
   for (int i = 0; i < n; i++) {

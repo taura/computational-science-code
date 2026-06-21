@@ -13,7 +13,8 @@ double work(long k) {
 int main() {
   const int n = 2000;
   double total = 0.0;
-  // BEGIN ANSWER: 下のループを並列化し, 仕事量が i に比例して不均一なので schedule(dynamic) で負荷を均せ.
+  // TODO: 下のループを並列化し, 仕事量が i に比例して不均一なので schedule(dynamic) で負荷を均せ.
+  // BEGIN ANSWER
 #pragma omp parallel for schedule(dynamic) reduction(+:total)
   // END ANSWER
   for (int i = 0; i < n; i++) {

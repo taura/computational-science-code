@@ -7,7 +7,8 @@ int main() {
   for (int i = 0; i < n; i++) {
     a[i] = i + 1;
   }
-  // BEGIN ANSWER: 下のブロックの直前に #pragma omp parallel を1行追加し, 各スレッドが自分の担当範囲を計算するようにせよ.
+  // TODO: 下のブロックの直前に #pragma omp parallel を1行追加し, 各スレッドが自分の担当範囲を計算するようにせよ.
+  // BEGIN ANSWER
 #pragma omp parallel
   // END ANSWER
   {

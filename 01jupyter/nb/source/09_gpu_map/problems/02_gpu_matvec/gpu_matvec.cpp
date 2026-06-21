@@ -14,7 +14,8 @@ int main(int argc, char ** argv) {
 
   /* 行列ベクトル積 y = A x を GPU で計算する.
      A は n*n 要素, x, y は n 要素. A,x は入力 (to:), y は結果 (from:). */
-  // BEGIN ANSWER: 行列ベクトル積をGPUにオフロードし, A,x は map(to:), 結果 y は map(from:) で受け取れ.
+  // TODO: 行列ベクトル積をGPUにオフロードし, A,x は map(to:), 結果 y は map(from:) で受け取れ.
+  // BEGIN ANSWER
 #pragma omp target teams distribute parallel for map(to: A[0:n*n], x[0:n]) map(from: y[0:n])
   for (long i = 0; i < n; i++) {
     double s = 0.0;

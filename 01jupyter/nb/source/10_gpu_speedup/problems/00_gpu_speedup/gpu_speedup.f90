@@ -46,13 +46,14 @@ program gpu_speedup
   ! 計測開始
   t0 = omp_get_wtime()
   ! 計算本体. 現状では指示行が無いのでCPU上で逐次に実行される.
-  ! BEGIN ANSWER: 下の do ループを !$omp target teams distribute parallel do num_teams(nteams) num_threads(nthreads) map(tofrom: x) ... !$omp end target teams distribute parallel do で囲み, ループをGPU上で並列実行させよ. (結果 x をCPUに戻して検算するので map(tofrom: x) が必要)
+  ! TODO: 下の do ループを !$omp target teams distribute parallel do num_teams(nteams) num_threads(nthreads) map(tofrom: x) ... !$omp end target teams distribute parallel do で囲み, ループをGPU上で並列実行させよ. (結果 x をCPUに戻して検算するので map(tofrom: x) が必要)
+  ! BEGIN ANSWER
   !$omp target teams distribute parallel do num_teams(nteams) num_threads(nthreads) map(tofrom: x)
   ! END ANSWER
   do i = 1, m
      x(i) = lin_rec(0.99d0, real(i, 8), 1.0d0, n)
   end do
-  ! BEGIN ANSWER: 上で始めた target teams distribute parallel do 領域を閉じる (!$omp end target teams distribute parallel do).
+  ! BEGIN ANSWER
   !$omp end target teams distribute parallel do
   ! END ANSWER
   ! 計測終了

@@ -18,7 +18,7 @@ program gpu_matvec
 
   ! 行列ベクトル積 y = A x を GPU で計算する.
   ! A は n*n 要素, x, y は n 要素. A,x は入力 (to:), y は結果 (from:).
-  ! BEGIN ANSWER: 行列ベクトル積をGPUにオフロードし, A,x は map(to:), 結果 y は map(from:) で受け取れ.
+  ! BEGIN ANSWER
   !$omp target teams distribute parallel do map(to: A, x) map(from: y) private(j, s)
   do i = 1, n
      s = 0.0d0

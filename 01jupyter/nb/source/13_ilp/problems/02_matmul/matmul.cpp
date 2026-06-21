@@ -11,7 +11,8 @@ void matmul(long n, double * A, double * B, double * C) {
   for (long i = 0; i < n; i++) {
     for (long k = 0; k < n; k++) {
       double a = A[i * n + k];
-      // BEGIN ANSWER: 最内 j ループを omp simd でSIMD化せよ (下の for の直前に1行追加).
+      // TODO: 最内 j ループを omp simd でSIMD化せよ (下の for の直前に1行追加).
+      // BEGIN ANSWER
       #pragma omp simd
       // END ANSWER
       for (long j = 0; j < n; j++) {

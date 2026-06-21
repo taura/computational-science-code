@@ -8,7 +8,8 @@ int main() {
     a[i] = sin((double)i);
   }
   double s = 0.0, sq = 0.0;
-  // BEGIN ANSWER: 下のループを #pragma omp parallel for reduction(+:s,sq) で並列化し, 2つの総和の競合を解消せよ.
+  // TODO: 下のループを #pragma omp parallel for reduction(+:s,sq) で並列化し, 2つの総和の競合を解消せよ.
+  // BEGIN ANSWER
 #pragma omp parallel for reduction(+:s,sq)
   // END ANSWER
   for (long i = 0; i < n; i++) {

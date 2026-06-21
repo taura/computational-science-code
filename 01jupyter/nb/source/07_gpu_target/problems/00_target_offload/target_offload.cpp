@@ -2,7 +2,8 @@
 #include <omp.h>
 
 int main() {
-  // BEGIN ANSWER: 下のブロックの直前に #pragma omp target を1行追加し, printf をデバイス(GPU)上で実行させよ.
+  // TODO: 下のブロックの直前に #pragma omp target を1行追加し, printf をデバイス(GPU)上で実行させよ.
+  // BEGIN ANSWER
 #pragma omp target
   // END ANSWER
   {

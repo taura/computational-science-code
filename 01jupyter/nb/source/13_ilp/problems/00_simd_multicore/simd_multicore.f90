@@ -39,13 +39,14 @@ program simd_multicore
   print '(A,I0,A,I0)', "m = ", m, ", n = ", n
 
   t0 = omp_get_wtime()
-  ! BEGIN ANSWER: 下の do ループの直前に !$omp parallel do を1行追加し, 外側 (互いに独立な要素) のループをマルチコアで並列化せよ.
+  ! TODO: 下の do ループの直前に !$omp parallel do を1行追加し, 外側 (互いに独立な要素) のループをマルチコアで並列化せよ.
+  ! BEGIN ANSWER
   !$omp parallel do
   ! END ANSWER
   do i = 1, m
      x(i) = lin_rec(0.99d0, dble(i), 1.0d0, n)
   end do
-  ! BEGIN ANSWER: 上の do ループに対応する !$omp end parallel do を書け.
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   t1 = omp_get_wtime()

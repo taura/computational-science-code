@@ -29,13 +29,14 @@ program count_primes
      call get_command_argument(1, arg); read (arg, *) N
   end if
   count = 0
-  ! BEGIN ANSWER: 下のループを !$omp parallel do schedule(runtime) reduction(+:count) で並列化せよ.
+  ! TODO: 下のループを !$omp parallel do schedule(runtime) reduction(+:count) で並列化せよ.
+  ! BEGIN ANSWER
   !$omp parallel do schedule(runtime) reduction(+:count)
   ! END ANSWER
   do i = 2, N
      count = count + is_prime(i)
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   print "(a,i0,a,i0)", "number of primes <= ", N, " : ", count

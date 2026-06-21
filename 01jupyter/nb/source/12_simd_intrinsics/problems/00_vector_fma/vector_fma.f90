@@ -7,7 +7,8 @@ subroutine vector_fma(n, a, b, c, y)
   real(8), intent(in) :: a(n), b(n), c(n)
   real(8), intent(out) :: y(n)
   integer(8) :: i
-  ! BEGIN ANSWER: 下の do ループの直前に !$omp simd を1行追加し, このループをSIMD化せよ.
+  ! TODO: 下の do ループの直前に !$omp simd を1行追加し, このループをSIMD化せよ.
+  ! BEGIN ANSWER
   !$omp simd
   ! END ANSWER
   do i = 1, n

@@ -26,7 +26,8 @@ int main(int argc, char ** argv) {
   for (long i = 0; i < n; i += nl) {
     doublev xv = *(doublev *)&x[i];
     doublev acc;
-    // BEGIN ANSWER: Horner法 acc = acc*x + c_k をベクトルのまま計算して多項式を評価せよ.
+    // TODO: Horner法 acc = acc*x + c_k をベクトルのまま計算して多項式を評価せよ.
+    // BEGIN ANSWER
     acc = (doublev){ c[deg], c[deg], c[deg], c[deg], c[deg], c[deg], c[deg], c[deg] };
     for (int k = deg - 1; k >= 0; k--) acc = acc * xv + c[k];
     // END ANSWER

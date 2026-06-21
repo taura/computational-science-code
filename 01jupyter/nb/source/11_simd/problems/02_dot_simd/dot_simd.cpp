@@ -4,7 +4,8 @@
 /* 内積 s = Σ x[i]*y[i] を n 要素について計算する */
 double dot(long n, double * x, double * y) {
   double s = 0.0;
-  // BEGIN ANSWER: 内積の総和ループを simd reduction でSIMD化せよ (下の for の直前に1行追加).
+  // TODO: 内積の総和ループを simd reduction でSIMD化せよ (下の for の直前に1行追加).
+  // BEGIN ANSWER
   #pragma omp simd reduction(+:s)
   // END ANSWER
   for (long i = 0; i < n; i++) {

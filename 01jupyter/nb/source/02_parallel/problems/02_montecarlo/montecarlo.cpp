@@ -18,7 +18,8 @@ static inline double draw_rand01(long long seed, long long k) {
 int main(int argc, char ** argv) {
   // 全体で投げる点の数 (コマンドライン引数, 既定 4,000,000)
   long N = (argc > 1) ? atol(argv[1]) : 4000000L;
-  // BEGIN ANSWER: 下のブロックの直前に #pragma omp parallel を1行追加し, 各スレッドが自分の担当分の点を投げて, 自分の π 推定値を表示するようにせよ.
+  // TODO: 下のブロックの直前に #pragma omp parallel を1行追加し, 各スレッドが自分の担当分の点を投げて, 自分の π 推定値を表示するようにせよ.
+  // BEGIN ANSWER
 #pragma omp parallel
   // END ANSWER
   {

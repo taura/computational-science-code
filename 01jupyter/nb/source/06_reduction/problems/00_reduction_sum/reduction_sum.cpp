@@ -4,7 +4,8 @@
 double int_inv_1_x2(double a, double b, long n) {
   double s = 0.0;
   double dx = (b - a) / (double)n;
-  // BEGIN ANSWER: 下のループを reduction(+:s) を用いて並列化し, 総和の競合を解消せよ.
+  // TODO: 下のループを reduction(+:s) を用いて並列化し, 総和の競合を解消せよ.
+  // BEGIN ANSWER
 #pragma omp parallel for reduction(+:s)
   // END ANSWER
   for (long i = 0; i < n; i++) {

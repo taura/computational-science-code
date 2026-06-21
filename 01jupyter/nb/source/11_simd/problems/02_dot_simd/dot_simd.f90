@@ -7,7 +7,8 @@ function dot(n, x, y) result(s)
   real(8) :: s
   integer(8) :: i
   s = 0.0d0
-  ! BEGIN ANSWER: 内積の総和ループを simd reduction でSIMD化せよ (下の do の直前に1行追加).
+  ! TODO: 内積の総和ループを simd reduction でSIMD化せよ (下の do の直前に1行追加).
+  ! BEGIN ANSWER
   !$omp simd reduction(+:s)
   ! END ANSWER
   do i = 1, n

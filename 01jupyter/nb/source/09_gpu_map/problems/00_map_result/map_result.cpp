@@ -5,7 +5,8 @@
 int main(int argc, char ** argv) {
   float t = (argc > 1 ? atof(argv[1]) : 10.0);
   float a[3] = { t + 1, t + 2, t + 3 };
-  // BEGIN ANSWER: GPUで更新した結果がホストに反映されるよう, target 構文に map(tofrom: ...) を付けよ.
+  // TODO: GPUで更新した結果がホストに反映されるよう, target 構文に map(tofrom: ...) を付けよ.
+  // BEGIN ANSWER
 #pragma omp target map(tofrom: t, a[0:3])
   // END ANSWER
   {

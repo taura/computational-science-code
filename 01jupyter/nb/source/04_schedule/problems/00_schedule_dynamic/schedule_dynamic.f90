@@ -19,14 +19,15 @@ program schedule_dynamic
   integer :: i
   real(8) :: total
   total = 0.0d0
-  ! BEGIN ANSWER: 下のループを並列化し, 仕事量が i に比例して不均一なので schedule(dynamic) で負荷を均せ.
+  ! TODO: 下のループを並列化し, 仕事量が i に比例して不均一なので schedule(dynamic) で負荷を均せ.
+  ! BEGIN ANSWER
   !$omp parallel do schedule(dynamic) reduction(+:total)
   ! END ANSWER
   do i = 0, n - 1
      ! 繰り返し i の仕事量は i に比例して重くなる (アンバランス)
      total = total + work(int(i, 8) * 100000_8)
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   print "(a,f0.6)", "total = ", total

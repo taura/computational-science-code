@@ -12,7 +12,8 @@ program map_result
      t = 10.0
   end if
   a = (/ t + 1, t + 2, t + 3 /)
-  ! BEGIN ANSWER: GPUで更新した結果がホストに反映されるよう, target 構文に map(tofrom: ...) を付けよ.
+  ! TODO: GPUで更新した結果がホストに反映されるよう, target 構文に map(tofrom: ...) を付けよ.
+  ! BEGIN ANSWER
   !$omp target map(tofrom: t, a)
   ! END ANSWER
   print "(a,f12.6)", "GPU: t = ", t
@@ -21,7 +22,7 @@ program map_result
   do i = 1, 3
      a(i) = a(i) * 2.0
   end do
-  ! BEGIN ANSWER: 上で始めた target 領域を閉じる (!$omp end target).
+  ! BEGIN ANSWER
   !$omp end target
   ! END ANSWER
   print "(a,f12.6)", "CPU: t = ", t

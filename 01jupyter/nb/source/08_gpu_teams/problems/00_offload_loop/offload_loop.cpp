@@ -4,7 +4,8 @@
 
 int main(int argc, char ** argv) {
   long m = (1 < argc ? atol(argv[1]) : 8);
-  // BEGIN ANSWER: 下の for 文の直前に #pragma omp target teams distribute parallel for を1行追加し, ループをGPU上の多数のチーム×スレッドで並列実行させよ. (結果を表示するだけなので map 節は不要)
+  // TODO: 下の for 文の直前に #pragma omp target teams distribute parallel for を1行追加し, ループをGPU上の多数のチーム×スレッドで並列実行させよ. (結果を表示するだけなので map 節は不要)
+  // BEGIN ANSWER
 #pragma omp target teams distribute parallel for
   // END ANSWER
   for (long i = 0; i < m; i++) {

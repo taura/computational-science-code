@@ -35,13 +35,14 @@ program measure_speedup
   ! 計測開始
   t0 = omp_get_wtime()
   ! 計算本体
-  ! BEGIN ANSWER: 下の do ループを !$omp parallel do ... !$omp end parallel do で囲み, ループを並列化せよ.
+  ! TODO: 下の do ループを !$omp parallel do ... !$omp end parallel do で囲み, ループを並列化せよ.
+  ! BEGIN ANSWER
   !$omp parallel do
   ! END ANSWER
   do i = 1, m
      x(i) = lin_rec(0.99d0, real(i, 8), 1.0d0, n)
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   ! 計測終了

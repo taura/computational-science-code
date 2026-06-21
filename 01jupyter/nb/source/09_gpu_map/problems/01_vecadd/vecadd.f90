@@ -12,7 +12,7 @@ program vecadd
   end do
 
   ! c(i) = a(i) + b(i) を GPU で計算する
-  ! BEGIN ANSWER: ループをGPUにオフロードして c(i)=a(i)+b(i) を計算せよ. a,b は map(to:), 結果 c は map(from:) で受け取る.
+  ! BEGIN ANSWER
   !$omp target teams distribute parallel do map(to: a, b) map(from: c)
   do i = 1, n
      c(i) = a(i) + b(i)

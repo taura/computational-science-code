@@ -9,7 +9,8 @@ int main(int argc, char ** argv) {
   for (long i = 0; i < n; i++) { a[i] = i; b[i] = 2 * i; c[i] = -1.0; }
 
   /* c[i] = a[i] + b[i] を GPU で計算する */
-  // BEGIN ANSWER: ループをGPUにオフロードして c[i]=a[i]+b[i] を計算せよ. a,b は map(to:), 結果 c は map(from:) で受け取る.
+  // TODO: ループをGPUにオフロードして c[i]=a[i]+b[i] を計算せよ. a,b は map(to:), 結果 c は map(from:) で受け取る.
+  // BEGIN ANSWER
 #pragma omp target teams distribute parallel for map(to: a[0:n], b[0:n]) map(from: c[0:n])
   for (long i = 0; i < n; i++) {
     c[i] = a[i] + b[i];

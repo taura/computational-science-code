@@ -29,7 +29,8 @@ program montecarlo_pi
   print "(a,i0)", "n = ", n
   ! 単位正方形 [0,1)x[0,1) に n 点を投げ, 半径 1 の円の内側に入った点を数える。
   ! 点 i は乱数列 i の 0,1 番目を x,y 座標に使う。
-  ! BEGIN ANSWER: 円内に入った点数を reduction(+:count) で集計して π を求めよ.
+  ! TODO: 円内に入った点数を reduction(+:count) で集計して π を求めよ.
+  ! BEGIN ANSWER
   !$omp parallel do private(x, y) reduction(+:count)
   ! END ANSWER
   do i = 0, n - 1
@@ -37,7 +38,7 @@ program montecarlo_pi
      y = draw_rand01(i, 1_8)
      if (x * x + y * y < 1.0d0) count = count + 1
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   pi = 4.0d0 * real(count, 8) / real(n, 8)

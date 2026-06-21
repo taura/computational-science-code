@@ -10,7 +10,8 @@ int main(int argc, char ** argv) {
   /* 中点則で ∫_0^1 4/(1+x^2) dx = π を GPU 上で計算する.
      s は総和 (スカラ) なので reduction(+:s) を使う.
      スカラはコンパイラが自動的に転送するので map は不要. */
-  // BEGIN ANSWER: GPU上で reduction(+:s) を使って総和を求め π を計算せよ.
+  // TODO: GPU上で reduction(+:s) を使って総和を求め π を計算せよ.
+  // BEGIN ANSWER
 #pragma omp target teams distribute parallel for reduction(+:s)
   for (long i = 0; i < n; i++) {
     double x = (i + 0.5) * dx;

@@ -14,7 +14,8 @@ program montecarlo
      n = 4000000_8
   end if
 
-  ! BEGIN ANSWER: 下のブロックを !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi) ... !$omp end parallel で囲み, 各スレッドが自分の担当分の点を投げて自分の π 推定値を表示するようにせよ.
+  ! TODO: 下のブロックを !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi) ... !$omp end parallel で囲み, 各スレッドが自分の担当分の点を投げて自分の π 推定値を表示するようにせよ.
+  ! BEGIN ANSWER
   !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi)
   ! END ANSWER
   tid = omp_get_thread_num()
@@ -39,7 +40,7 @@ program montecarlo
   end if
   print "(a,i0,a,i0,a,i0,a,f0.6)", &
        "thread ", tid, " of ", nt, ": ", my_n, " points, pi estimate = ", pi
-  ! BEGIN ANSWER: 上で始めた parallel 領域を閉じる (!$omp end parallel).
+  ! BEGIN ANSWER
   !$omp end parallel
   ! END ANSWER
 

@@ -21,7 +21,8 @@ program poly_horner
 
   ! 各要素について Horner 法 acc = acc*x + c_k で多項式を評価する
   do i = 1, n
-     ! BEGIN ANSWER: Horner法 acc = acc*x + c_k で p(i) を求めよ.
+     ! TODO: Horner法 acc = acc*x + c_k で p(i) を求めよ.
+     ! BEGIN ANSWER
      acc = c(deg)
      do k = deg - 1, 0, -1
         acc = acc * x(i) + c(k)

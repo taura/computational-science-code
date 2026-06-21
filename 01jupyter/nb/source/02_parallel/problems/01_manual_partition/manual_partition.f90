@@ -6,7 +6,8 @@ program manual_partition
   do i = 0, n - 1
      a(i) = i + 1
   end do
-  ! BEGIN ANSWER: 下のブロックを !$omp parallel private(tid, nt, lo, hi, i, s) ... !$omp end parallel で囲み, 各スレッドが自分の担当範囲を計算するようにせよ.
+  ! TODO: 下のブロックを !$omp parallel private(tid, nt, lo, hi, i, s) ... !$omp end parallel で囲み, 各スレッドが自分の担当範囲を計算するようにせよ.
+  ! BEGIN ANSWER
   !$omp parallel private(tid, nt, lo, hi, i, s)
   ! END ANSWER
   tid = omp_get_thread_num()
@@ -19,7 +20,7 @@ program manual_partition
   end do
   print "(a,i0,a,i0,a,i0,a,i0,a,f0.6)", &
        "thread ", tid, " of ", nt, ": range [", lo, ", ", hi, "), partial sum = ", s
-  ! BEGIN ANSWER: 上で始めた parallel 領域を閉じる (!$omp end parallel).
+  ! BEGIN ANSWER
   !$omp end parallel
   ! END ANSWER
 end program manual_partition

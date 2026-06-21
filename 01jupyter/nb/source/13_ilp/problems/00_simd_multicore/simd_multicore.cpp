@@ -54,7 +54,8 @@ int main(int argc, char ** argv) {
   /* 計測開始 */
   double t0 = omp_get_wtime();
   /* 計算本体 (nl 回ずつまとめて SIMD 実行). */
-  // BEGIN ANSWER: 下の for ループの直前に #pragma omp parallel for を1行追加し, 外側のループ (互いに独立) をマルチコアで並列化せよ.
+  // TODO: 下の for ループの直前に #pragma omp parallel for を1行追加し, 外側のループ (互いに独立) をマルチコアで並列化せよ.
+  // BEGIN ANSWER
   #pragma omp parallel for
   // END ANSWER
   for (long i = 0; i < m; i += nl) {

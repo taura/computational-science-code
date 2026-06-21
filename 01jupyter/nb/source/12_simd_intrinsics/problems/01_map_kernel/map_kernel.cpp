@@ -15,7 +15,8 @@ int main(int argc, char ** argv) {
   for (long i = 0; i < n; i += nl) {
     doublev xv = *(doublev *)&x[i];   /* x[i..i+nl-1] を1つのベクトルとして読む */
     doublev yv;
-    // BEGIN ANSWER: xv を使い y = 2*x + 1 を「ベクトルのまま」計算して yv に求めよ.
+    // TODO: xv を使い y = 2*x + 1 を「ベクトルのまま」計算して yv に求めよ.
+    // BEGIN ANSWER
     yv = 2.0 * xv + 1.0;
     // END ANSWER
     *(doublev *)&y[i] = yv;           /* y[i..i+nl-1] に書き戻す */

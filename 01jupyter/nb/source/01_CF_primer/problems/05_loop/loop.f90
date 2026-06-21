@@ -9,7 +9,8 @@ program loop
   ! 2 を何回かけたら N を超えるか (2^k > N となる最小の k) を求める
   p = 1            ! p = 2^k
   k = 0
-  ! BEGIN ANSWER: p が N を超えるまで「p を 2 倍し k を 1 増やす」を繰り返す do while ループを書け.
+  ! TODO: p が N を超えるまで「p を 2 倍し k を 1 増やす」を繰り返す do while ループを書け.
+  ! BEGIN ANSWER
   do while (p <= N)
      p = p * 2
      k = k + 1

@@ -6,7 +6,8 @@ program args
   ! 引数が無いときの既定値は n=3, x=2.0
   n = 3
   x = 2.0d0
-  ! BEGIN ANSWER: 1番目の引数を n に, 2番目の引数を x に, 内部 read で変換せよ (引数があるときだけ).
+  ! TODO: 1番目の引数を n に, 2番目の引数を x に, 内部 read で変換せよ (引数があるときだけ).
+  ! BEGIN ANSWER
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if

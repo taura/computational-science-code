@@ -15,7 +15,8 @@ int main() {
   int i;
   double x;
   double sum = 0.0;
-  // BEGIN ANSWER: fscanf で1行ずつ (i, x) を読み, x を sum に足し込むループを書け.
+  // TODO: fscanf で1行ずつ (i, x) を読み, x を sum に足し込むループを書け.
+  // BEGIN ANSWER
   while (fscanf(rp, "%d %lf", &i, &x) == 2) {
     sum += x;
   }

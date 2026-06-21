@@ -11,7 +11,8 @@ program fileio
   ! 次に data.txt を読み直し, 2列目 (x) の合計を求める
   open(unit=10, file="data.txt", status="old", action="read")
   sum = 0.0d0
-  ! BEGIN ANSWER: read で1行ずつ (i, x) を読み (iostat で終端判定), x を sum に足し込むループを書け.
+  ! TODO: read で1行ずつ (i, x) を読み (iostat で終端判定), x を sum に足し込むループを書け.
+  ! BEGIN ANSWER
   do
      read(10, *, iostat=ios) i, x
      if (ios /= 0) exit

@@ -5,7 +5,8 @@ int main(int argc, char ** argv) {
   /* 要素数 n を実行時 (コマンドライン引数) で決める */
   long n = (argc > 1 ? atol(argv[1]) : 100);
   double * a = NULL;
-  // BEGIN ANSWER: a に double n 個分の領域を malloc で確保せよ.
+  // TODO: a に double n 個分の領域を malloc で確保せよ.
+  // BEGIN ANSWER
   a = (double *)malloc(sizeof(double) * n);
   // END ANSWER
   for (long i = 0; i < n; i++) {

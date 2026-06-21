@@ -21,7 +21,8 @@ int main(int argc, char ** argv) {
   printf("n = %ld\n", n);
   /* 単位正方形 [0,1)x[0,1) に n 点を投げ, 半径 1 の円の内側に入った点を数える。
      点 i は乱数列 i の 0,1 番目を x,y 座標に使う。 */
-  // BEGIN ANSWER: 円内に入った点数を reduction(+:count) で集計して π を求めよ.
+  // TODO: 円内に入った点数を reduction(+:count) で集計して π を求めよ.
+  // BEGIN ANSWER
 #pragma omp parallel for reduction(+:count)
   // END ANSWER
   for (long i = 0; i < n; i++) {

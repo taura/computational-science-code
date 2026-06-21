@@ -30,7 +30,8 @@ int main(int argc, char ** argv) {
   /* 計測開始 */
   double t0 = omp_get_wtime();
   /* 計算本体. 現状では指示行が無いのでCPU上で逐次に実行される. */
-  // BEGIN ANSWER: 下の for 文の直前に #pragma omp target teams distribute parallel for num_teams(nteams) num_threads(nthreads) map(tofrom: x[0:m]) を1行追加し, ループをGPU上で並列実行させよ. (結果 x をCPUに戻して検算するので map(tofrom: x[0:m]) が必要)
+  // TODO: 下の for 文の直前に #pragma omp target teams distribute parallel for num_teams(nteams) num_threads(nthreads) map(tofrom: x[0:m]) を1行追加し, ループをGPU上で並列実行させよ. (結果 x をCPUに戻して検算するので map(tofrom: x[0:m]) が必要)
+  // BEGIN ANSWER
 #pragma omp target teams distribute parallel for num_teams(nteams) num_threads(nthreads) map(tofrom: x[0:m])
   // END ANSWER
   for (long i = 0; i < m; i++) {

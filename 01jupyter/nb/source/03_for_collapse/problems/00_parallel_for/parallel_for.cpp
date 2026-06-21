@@ -4,7 +4,8 @@
 int main() {
   const int n = 8;
   int a[n];
-  // BEGIN ANSWER: 下の for ループの直前に #pragma omp parallel for を1行追加し, 繰り返しを複数のスレッドに分担させよ.
+  // TODO: 下の for ループの直前に #pragma omp parallel for を1行追加し, 繰り返しを複数のスレッドに分担させよ.
+  // BEGIN ANSWER
 #pragma omp parallel for
   // END ANSWER
   for (int i = 0; i < n; i++) {

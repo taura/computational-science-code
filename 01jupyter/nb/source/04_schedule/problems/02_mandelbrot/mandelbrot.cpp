@@ -15,7 +15,8 @@ int main(int argc, char **argv) {
 
   // 各ピクセルの脱出反復数を計算する.
   // 内部の点は maxiter まで回るため画素ごとの仕事量が大きく異なる (負荷が不均一).
-  // BEGIN ANSWER: 下の行 (px ループ) の直前に #pragma omp parallel for schedule(dynamic) を追加せよ. 仕事量が画素ごとに大きく異なるため, dynamic スケジュールが負荷を均す.
+  // TODO: 下の行 (px ループ) の直前に #pragma omp parallel for schedule(dynamic) を追加せよ. 仕事量が画素ごとに大きく異なるため, dynamic スケジュールが負荷を均す.
+  // BEGIN ANSWER
 #pragma omp parallel for schedule(dynamic)
   // END ANSWER
   for (int px = 0; px < W * H; px++) {

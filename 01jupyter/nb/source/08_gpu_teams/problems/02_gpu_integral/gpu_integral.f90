@@ -13,7 +13,7 @@ program gpu_integral
   ! 中点則で ∫_0^1 4/(1+x^2) dx = π を GPU 上で計算する.
   ! s は総和 (スカラ) なので reduction(+:s) を使う.
   ! スカラはコンパイラが自動的に転送するので map は不要.
-  ! BEGIN ANSWER: GPU上で reduction(+:s) を使って総和を求め π を計算せよ.
+  ! BEGIN ANSWER
   !$omp target teams distribute parallel do reduction(+:s) private(x)
   do i = 0, n - 1
      x = (i + 0.5d0) * dx

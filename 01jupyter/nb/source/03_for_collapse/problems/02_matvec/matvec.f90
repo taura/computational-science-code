@@ -28,7 +28,8 @@ program matvec
   end do
 
   ! 行列ベクトル積 y = A x
-  ! BEGIN ANSWER: 下の外側の do ループを !$omp parallel do private(j, s) ... !$omp end parallel do で囲み, 行ごとの計算をスレッドで分担せよ.
+  ! TODO: 下の外側の do ループを !$omp parallel do private(j, s) ... !$omp end parallel do で囲み, 行ごとの計算をスレッドで分担せよ.
+  ! BEGIN ANSWER
   !$omp parallel do private(j, s)
   ! END ANSWER
   do i = 0, n - 1
@@ -38,7 +39,7 @@ program matvec
      end do
      y(i) = s
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
 

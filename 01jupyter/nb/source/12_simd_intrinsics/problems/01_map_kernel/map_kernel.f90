@@ -16,7 +16,8 @@ program map_kernel
 
   ! y(i) = 2*x(i) + 1 を計算する
   do i = 1, n
-     ! BEGIN ANSWER: y(i) = 2*x(i) + 1 を計算せよ (Fortran はこの配列演算を自動でSIMD化する).
+     ! TODO: y(i) = 2*x(i) + 1 を計算せよ (Fortran はこの配列演算を自動でSIMD化する).
+     ! BEGIN ANSWER
      y(i) = 2.0d0 * x(i) + 1.0d0
      ! END ANSWER
   end do

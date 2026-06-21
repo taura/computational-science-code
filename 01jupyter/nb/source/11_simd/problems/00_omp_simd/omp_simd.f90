@@ -6,7 +6,8 @@ subroutine saxpy(n, a, x, y)
   real(8), intent(in) :: x(n)
   real(8), intent(inout) :: y(n)
   integer(8) :: i
-  ! BEGIN ANSWER: 下の do ループの直前に !$omp simd を1行追加し, このループをSIMD化せよ.
+  ! TODO: 下の do ループの直前に !$omp simd を1行追加し, このループをSIMD化せよ.
+  ! BEGIN ANSWER
   !$omp simd
   ! END ANSWER
   do i = 1, n

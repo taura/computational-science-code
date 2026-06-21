@@ -9,7 +9,8 @@ program mean_var
   end do
   s = 0.0d0
   sq = 0.0d0
-  ! BEGIN ANSWER: 下のループを !$omp parallel do private(x) reduction(+:s,sq) で並列化し, 2つの総和の競合を解消せよ.
+  ! TODO: 下のループを !$omp parallel do private(x) reduction(+:s,sq) で並列化し, 2つの総和の競合を解消せよ.
+  ! BEGIN ANSWER
   !$omp parallel do private(x) reduction(+:s,sq)
   ! END ANSWER
   do i = 0, n - 1
@@ -17,7 +18,7 @@ program mean_var
      s  = s + x
      sq = sq + x * x
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   mean = s / n

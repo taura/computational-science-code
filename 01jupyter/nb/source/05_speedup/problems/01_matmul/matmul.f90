@@ -18,7 +18,8 @@ program matmul_speedup
   ! 計測開始
   t0 = omp_get_wtime()
   ! 計算本体: 3 重ループ. C[i][j] += A[i][k] * B[k][j]
-  ! BEGIN ANSWER: いちばん外側の i ループを !$omp parallel do ... !$omp end parallel do で囲み, 行ごとに並列化せよ.
+  ! TODO: いちばん外側の i ループを !$omp parallel do ... !$omp end parallel do で囲み, 行ごとに並列化せよ.
+  ! BEGIN ANSWER
   !$omp parallel do private(j, k, s)
   ! END ANSWER
   do i = 0, n - 1
@@ -30,7 +31,7 @@ program matmul_speedup
         C(i * n + j + 1) = s
      end do
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   ! 計測終了

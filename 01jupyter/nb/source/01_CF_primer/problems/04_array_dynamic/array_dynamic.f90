@@ -8,7 +8,8 @@ program array_dynamic
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if
-  ! BEGIN ANSWER: a に n 要素分の領域を確保せよ (allocate).
+  ! TODO: a に n 要素分の領域を確保せよ (allocate).
+  ! BEGIN ANSWER
   allocate(a(n))
   ! END ANSWER
   do i = 1, n

@@ -27,7 +27,8 @@ program mandelbrot
 
   ! 各ピクセルの脱出反復数を計算する.
   ! 内部の点は maxiter まで回るため画素ごとの仕事量が大きく異なる (負荷が不均一).
-  ! BEGIN ANSWER: 下の px ループを !$omp parallel do schedule(dynamic) private(i, j, cx, cy, zr, zi, zr2, zi2, it) ... !$omp end parallel do で囲め. 仕事量が画素ごとに大きく異なるため, dynamic スケジュールが負荷を均す.
+  ! TODO: 下の px ループを !$omp parallel do schedule(dynamic) private(i, j, cx, cy, zr, zi, zr2, zi2, it) ... !$omp end parallel do で囲め. 仕事量が画素ごとに大きく異なるため, dynamic スケジュールが負荷を均す.
+  ! BEGIN ANSWER
   !$omp parallel do schedule(dynamic) private(i, j, cx, cy, zr, zi, zr2, zi2, it)
   ! END ANSWER
   do px = 0, W*H - 1
@@ -47,7 +48,7 @@ program mandelbrot
      end do
      cnt(px) = it
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
 
