@@ -23,7 +23,7 @@ endef
 
 # $(call dir_in,D) -> directories in D
 define dir_in
-$(shell find $(1) -mindepth 1 -maxdepth 1 -type d -printf "%f\n")
+$(shell find $(1) -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null)
 endef
 
 # $(call ext_in,D,e) -> files of extension e in D

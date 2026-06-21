@@ -62,7 +62,7 @@ which nvfortran
 
 """ code w """
 %%writefile hello.cpp
-""" include nb/source/01_intro/include/hello.cpp """
+""" include nb/source/01_CF_primer/include/hello.cpp """
 """ """
 
 """ md
@@ -85,7 +85,7 @@ nvc++ -fast hello.cpp -o hello_cpp.exe
 
 """ code w """
 %%writefile hello.f90
-""" include nb/source/01_intro/include/hello.f90 """
+""" include nb/source/01_CF_primer/include/hello.f90 """
 """ """
 
 """ code w """
@@ -114,7 +114,7 @@ nvfortran -fast hello.f90 -o hello_f.exe
 
 """ code w """
 %%writefile types.cpp
-""" include nb/source/01_intro/include/types.cpp """
+""" include nb/source/01_CF_primer/include/types.cpp """
 """ """
 
 """ code w """
@@ -131,7 +131,7 @@ nvc++ -fast types.cpp -o types_cpp.exe && ./types_cpp.exe
 
 """ code w """
 %%writefile types.f90
-""" include nb/source/01_intro/include/types.f90 """
+""" include nb/source/01_CF_primer/include/types.f90 """
 """ """
 
 """ code w """
@@ -154,7 +154,7 @@ nvfortran -fast types.f90 -o types_f.exe && ./types_f.exe
 
 """ code w """
 %%writefile func.cpp
-""" include nb/source/01_intro/include/func.cpp """
+""" include nb/source/01_CF_primer/include/func.cpp """
 """ """
 
 """ code w """
@@ -168,7 +168,7 @@ nvc++ -fast func.cpp -o func_cpp.exe && ./func_cpp.exe
 
 """ code w """
 %%writefile func.f90
-""" include nb/source/01_intro/include/func.f90 """
+""" include nb/source/01_CF_primer/include/func.f90 """
 """ """
 
 """ code w """
@@ -190,7 +190,7 @@ nvfortran -fast func.f90 -o func_f.exe && ./func_f.exe
 
 """ code w """
 %%writefile array_static.cpp
-""" include nb/source/01_intro/include/array_static.cpp """
+""" include nb/source/01_CF_primer/include/array_static.cpp """
 """ """
 
 """ code w """
@@ -204,7 +204,7 @@ nvc++ -fast array_static.cpp -o array_static_cpp.exe && ./array_static_cpp.exe
 
 """ code w """
 %%writefile array_static.f90
-""" include nb/source/01_intro/include/array_static.f90 """
+""" include nb/source/01_CF_primer/include/array_static.f90 """
 """ """
 
 """ code w """
@@ -225,7 +225,7 @@ nvfortran -fast array_static.f90 -o array_static_f.exe && ./array_static_f.exe
 
 """ code w """
 %%writefile array_dynamic.cpp
-""" include nb/source/01_intro/include/array_dynamic.cpp """
+""" include nb/source/01_CF_primer/include/array_dynamic.cpp """
 """ """
 
 """ code w """
@@ -239,7 +239,7 @@ nvc++ -fast array_dynamic.cpp -o array_dynamic_cpp.exe && ./array_dynamic_cpp.ex
 
 """ code w """
 %%writefile array_dynamic.f90
-""" include nb/source/01_intro/include/array_dynamic.f90 """
+""" include nb/source/01_CF_primer/include/array_dynamic.f90 """
 """ """
 
 """ code w """
@@ -260,7 +260,7 @@ nvfortran -fast array_dynamic.f90 -o array_dynamic_f.exe && ./array_dynamic_f.ex
 
 """ code w """
 %%writefile loop.cpp
-""" include nb/source/01_intro/include/loop.cpp """
+""" include nb/source/01_CF_primer/include/loop.cpp """
 """ """
 
 """ code w """
@@ -274,7 +274,7 @@ nvc++ -fast loop.cpp -o loop_cpp.exe && ./loop_cpp.exe
 
 """ code w """
 %%writefile loop.f90
-""" include nb/source/01_intro/include/loop.f90 """
+""" include nb/source/01_CF_primer/include/loop.f90 """
 """ """
 
 """ code w """
@@ -294,7 +294,7 @@ nvfortran -fast loop.f90 -o loop_f.exe && ./loop_f.exe
 
 """ code w """
 %%writefile fileio.cpp
-""" include nb/source/01_intro/include/fileio.cpp """
+""" include nb/source/01_CF_primer/include/fileio.cpp """
 """ """
 
 """ code w """
@@ -308,7 +308,7 @@ nvc++ -fast fileio.cpp -o fileio_cpp.exe && ./fileio_cpp.exe && echo "--- data.t
 
 """ code w """
 %%writefile fileio.f90
-""" include nb/source/01_intro/include/fileio.f90 """
+""" include nb/source/01_CF_primer/include/fileio.f90 """
 """ """
 
 """ code w """
@@ -328,7 +328,7 @@ nvfortran -fast fileio.f90 -o fileio_f.exe && ./fileio_f.exe && echo "--- data.t
 
 """ code w """
 %%writefile args.cpp
-""" include nb/source/01_intro/include/args.cpp """
+""" include nb/source/01_CF_primer/include/args.cpp """
 """ """
 
 """ code w """
@@ -342,7 +342,7 @@ nvc++ -fast args.cpp -o args_cpp.exe && ./args_cpp.exe 5 2.5
 
 """ code w """
 %%writefile args.f90
-""" include nb/source/01_intro/include/args.f90 """
+""" include nb/source/01_CF_primer/include/args.f90 """
 """ """
 
 """ code w """
