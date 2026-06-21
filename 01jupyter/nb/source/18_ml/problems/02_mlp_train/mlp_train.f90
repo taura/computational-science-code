@@ -123,6 +123,31 @@ contains
     end do
   end subroutine matvec
 
+  ! --- 転置行列ベクトル積: y = W^T d  (W(n_in,n_out), d(n_out), y(n_in)) ---
+  subroutine matTvec(W, d, y)
+    real(8), intent(in)  :: W(:,:), d(:)
+    real(8), intent(out) :: y(:)
+    integer :: k, j
+    y = 0.0d0
+    do k = 1, size(W,2)
+       do j = 1, size(W,1)
+          y(j) = y(j) + W(j,k) * d(k)
+       end do
+    end do
+  end subroutine matTvec
+
+  ! --- 外積の加算 (rank-1 更新): G += a b^T  (G(m,n), a(m), b(n)) ---
+  subroutine add_outer(G, a, b)
+    real(8), intent(inout) :: G(:,:)
+    real(8), intent(in)    :: a(:), b(:)
+    integer :: i, j
+    do j = 1, size(G,2)
+       do i = 1, size(G,1)
+          G(i,j) = G(i,j) + a(i) * b(j)
+       end do
+    end do
+  end subroutine add_outer
+
   ! --- 1サンプルの forward + backprop。勾配 g... に加算し, 損失と正否を返す ---
   subroutine forward_backward(W1, b1, W2, b2, x, label, gW1, gb1, gW2, gb2, sloss, scorr)
     real(8), intent(in)    :: W1(:,:), b1(:), W2(:,:), b2(:), x(:)
@@ -130,26 +155,19 @@ contains
     real(8), intent(inout) :: gW1(:,:), gb1(:), gW2(:,:), gb2(:)
     real(8), intent(out)   :: sloss
     integer, intent(out)   :: scorr
-    integer :: HID, IN, OUT, k, j, c
-    real(8) :: h(size(W1,2)), o(size(W2,2)), dout(size(W2,2)), dh
-    HID = size(W1,2); IN = size(W1,1); OUT = size(W2,2)
+    real(8) :: h(size(W1,2)), o(size(W2,2)), dout(size(W2,2)), dh(size(W1,2))
     call matvec(W1, b1, x, h); h = max(0.0d0, h)    ! h = ReLU(W1 x + b1)
     call matvec(W2, b2, h, o)                        ! o = W2 h + b2
     o = exp(o - maxval(o)); o = o / sum(o)           ! p = softmax(o)
     sloss = -log(o(label+1) + 1.0d-12)               ! ラベル 0..9, 添字 1..OUT
     scorr = merge(1, 0, maxloc(o,1)-1 == label)
     dout = o; dout(label+1) = dout(label+1) - 1.0d0  ! do = p - onehot(label)
-    do c = 1, OUT                                    ! gW2 += do h^T, gb2 += do
-       gb2(c) = gb2(c) + dout(c)
-       do k = 1, HID; gW2(k,c) = gW2(k,c) + dout(c)*h(k); end do
-    end do
-    do k = 1, HID                                    ! dh = (W2^T do)・[h>0]
-       if (h(k) <= 0.0d0) cycle
-       dh = 0.0d0
-       do c = 1, OUT; dh = dh + W2(k,c)*dout(c); end do
-       gb1(k) = gb1(k) + dh                          ! gW1 += dh x^T, gb1 += dh
-       do j = 1, IN; gW1(j,k) = gW1(j,k) + dh*x(j); end do
-    end do
+    gb2 = gb2 + dout                                 ! gb2 += do
+    call add_outer(gW2, h, dout)                     ! gW2 += do h^T (= h ⊗ do)
+    call matTvec(W2, dout, dh)                       ! dh = W2^T do
+    where (h <= 0.0d0) dh = 0.0d0                    ! ReLU の微分 (・[h>0])
+    gb1 = gb1 + dh                                   ! gb1 += dh
+    call add_outer(gW1, x, dh)                       ! gW1 += dh x^T (= x ⊗ dh)
   end subroutine forward_backward
 
   ! --- 勾配降下の1ステップ: W -= sc * gW,  b -= sc * gb ---

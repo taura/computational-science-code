@@ -138,6 +138,29 @@ static void matvec(const Mat & W, const double * b, const double * x, double * y
   }
 }
 
+/* 転置行列ベクトル積: y = W^T d  (W: rows×cols, d: rows, y: cols) */
+static void matTvec(const Mat & W, const double * d, double * y) {
+  for (long j = 0; j < W.cols; j++) y[j] = 0.0;
+  for (long i = 0; i < W.rows; i++)
+    for (long j = 0; j < W.cols; j++) y[j] += W(i, j) * d[i];
+}
+
+/* 外積の加算 (rank-1 更新): G += a b^T  (G: m×n の連続配列, a: m, b: n) */
+static void add_outer(double * G, long m, long n, const double * a, const double * b) {
+  for (long i = 0; i < m; i++)
+    for (long j = 0; j < n; j++) G[i * n + j] += a[i] * b[j];
+}
+
+/* ベクトルの加算: acc += v */
+static void vec_add(double * acc, const double * v, long n) {
+  for (long i = 0; i < n; i++) acc[i] += v[i];
+}
+
+/* y += s x  (axpy) */
+static void axpy(double * y, double s, const double * x, long n) {
+  for (long i = 0; i < n; i++) y[i] += s * x[i];
+}
+
 static void relu_inplace(double * v, long n) {
   for (long i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
 }
@@ -183,36 +206,28 @@ static LossCorrect forward_backward(const Mat & W1, const double * b1,
                                     double * gW1, double * gb1,
                                     double * gW2, double * gb2) {
   const int HID = W1.rows, IN = W1.cols, OUT = W2.rows;
-  double h[1024], o[64];                          /* HID<=1024, OUT<=64 を仮定 */
-  matvec(W1, b1, x, h); relu_inplace(h, HID);     /* h = ReLU(W1 x + b1) */
-  matvec(W2, b2, h, o); softmax_inplace(o, OUT);  /* p = softmax(W2 h + b2) */
+  double h[1024], o[64], dout[64], dh[1024];       /* HID<=1024, OUT<=64 を仮定 */
+  matvec(W1, b1, x, h); relu_inplace(h, HID);      /* h = ReLU(W1 x + b1) */
+  matvec(W2, b2, h, o); softmax_inplace(o, OUT);   /* p = softmax(W2 h + b2) */
 
   LossCorrect r;
   r.loss = -log(o[label] + 1e-12);
   r.correct = (argmax(o, OUT) == label) ? 1 : 0;
 
-  double dout[64];                                /* do = p - onehot(label) */
-  for (int c = 0; c < OUT; c++) dout[c] = o[c] - (c == label ? 1.0 : 0.0);
-  for (int c = 0; c < OUT; c++) {                 /* gW2 += do h^T, gb2 += do */
-    gb2[c] += dout[c];
-    for (int k = 0; k < HID; k++) gW2[c * HID + k] += dout[c] * h[k];
-  }
-  for (int k = 0; k < HID; k++) {                 /* dh = (W2^T do)・[h>0] */
-    if (h[k] <= 0.0) continue;
-    double dh = 0.0;
-    for (int c = 0; c < OUT; c++) dh += W2(c, k) * dout[c];
-    gb1[k] += dh;                                 /* gW1 += dh x^T, gb1 += dh */
-    for (int j = 0; j < IN; j++) gW1[k * IN + j] += dh * x[j];
-  }
+  for (int c = 0; c < OUT; c++) dout[c] = o[c] - (c == label ? 1.0 : 0.0); /* do = p - onehot */
+  vec_add(gb2, dout, OUT);                         /* gb2 += do            */
+  add_outer(gW2, OUT, HID, dout, h);               /* gW2 += do h^T        */
+  matTvec(W2, dout, dh);                           /* dh = W2^T do         */
+  for (int k = 0; k < HID; k++) if (h[k] <= 0.0) dh[k] = 0.0;  /* ReLU の微分 (・[h>0]) */
+  vec_add(gb1, dh, HID);                           /* gb1 += dh            */
+  add_outer(gW1, HID, IN, dh, x);                  /* gW1 += dh x^T        */
   return r;
 }
 
 /* 勾配降下の1ステップ: W -= sc * gW,  b -= sc * gb */
 static void sgd_update(Mat & W, double * b, const double * gW, const double * gb, double sc) {
-  for (long i = 0; i < W.rows; i++) {
-    for (long j = 0; j < W.cols; j++) W(i, j) -= sc * gW[i * W.cols + j];
-    b[i] -= sc * gb[i];
-  }
+  axpy(W.data(), -sc, gW, W.rows * W.cols);    /* W -= sc gW */
+  axpy(b, -sc, gb, W.rows);                    /* b -= sc gb */
 }
 
 /* ====================== main ====================== */
