@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 #include <omp.h>
 
 /* 本物の MNIST 手書き数字を, 学習済みの2層MLPで認識する (推論=forward)。
@@ -8,21 +9,23 @@
    - data/W1.npy, b1.npy, W2.npy, b2.npy : 学習済みの重み (float64)
    - data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
    - data/y_test.npy : 正解ラベル (int32 [N], 0..9)
-   推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
-   各画像の推論は独立なので並列化できる。
 
-   ネットワークの大きさは定数 (IN/HID/OUT) なので, 重み・テスト画像・ラベル・中間結果を
-   すべて固定サイズ配列で1つの構造体 Net にまとめる (ヒープ確保なし)。中間 h,o も
-   画像ごとに net.h[i], net.o[i] として持つ (スレッドが別々の行を書くので競合しない)。
-   Net は内部にポインタを持たないので, GPU 発展では map(to: net) でまるごと送れる。 */
+   テスト画像 NT 枚を**まとめて行列として**前向き計算する:
+     H = ReLU(X W1^T + b1),  P = softmax(X 2層目)        (X:[NT,IN], H:[NT,HID], P:[NT,OUT])
+   各ステップ (dense_relu, dense_softmax) はバッチ中の全サンプルを一度に処理する。
+   行(=サンプル)ごとに独立なので, その出力行のループを並列化できる。
+
+   ネットワークの大きさは定数なので, 重み・画像・ラベル・中間結果をすべて固定サイズ配列で
+   1つの構造体 Net にまとめる。Net は内部にポインタを持たないので, GPU 発展では
+   map(to: net) でまるごと送れる。 */
 
 static const int IN = 784, HID = 128, OUT = 10;
 static const int MAXN = 10000;          /* テスト画像の最大枚数 (これを超える分は読まない) */
 
 struct Net {
   double W1[HID][IN], b1[HID], W2[OUT][HID], b2[OUT];   /* 学習済みの重み */
-  double x[MAXN][IN], y[MAXN];                          /* テスト画像と正解ラベル */
-  double h[MAXN][HID], o[MAXN][OUT];                    /* 中間: 各画像の隠れ層・出力 */
+  double X[MAXN][IN], y[MAXN];                          /* テスト画像と正解ラベル */
+  double H[MAXN][HID], P[MAXN][OUT];                    /* 中間: 隠れ層, 出力確率 (バッチ全体) */
 };
 
 /* ====================== .npy 入力 ====================== */
@@ -54,9 +57,9 @@ static void read_npy(const char * path, double * dst, long * shape, int ndim, lo
   shape[0] = s0;
   if (ndim == 2) shape[1] = s1;
   delete[] hdr;
-  if (dst == nullptr) { fclose(f); return; }              /* 形だけ */
+  if (dst == nullptr) { fclose(f); return; }
 
-  long rows = (maxrows >= 0 && s0 > maxrows) ? maxrows : s0;   /* 容量で頭打ち */
+  long rows = (maxrows >= 0 && s0 > maxrows) ? maxrows : s0;
   long n = rows * (ndim == 2 ? s1 : 1);
   if (!strcmp(descr, "<f8")) {
     fread(dst, sizeof(double), n, f);
@@ -78,8 +81,8 @@ static void read_npy(const char * path, double * dst, long * shape, int ndim, lo
   fclose(f);
 }
 
-/* read_npy + 形のチェックだけ。容量 cap 行までを dst に読み, 実際に読んだ行数を返す
-   (ファイルが cap 行より多ければ先頭 cap 行だけ)。n1=0 なら1次元, n1>0 なら列数を確認。 */
+/* read_npy + 形のチェックだけ。容量 cap 行までを dst に読み, 実際に読んだ行数を返す。
+   n1=0 なら1次元, n1>0 なら列数を確認。 */
 static long load_npy(const char * path, double * dst, long cap, long n1) {
   long sh[2];
   read_npy(path, dst, sh, (n1 > 0 ? 2 : 1), cap);
@@ -87,20 +90,42 @@ static long load_npy(const char * path, double * dst, long cap, long n1) {
   return (sh[0] > cap) ? cap : sh[0];
 }
 
-/* ====================== 行列演算 ====================== */
-/* 行列ベクトル積 + バイアス: y = W x + b  (W は R×C, サイズは型から自動で決まる) */
+/* ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ====================== */
+/* Y = ReLU(X W^T + b) : W は R×C, X は m×C, Y は m×R。行 i (サンプル) ごとに独立。 */
 template <int R, int C>
-static void matvec(const double (&W)[R][C], const double * x,
-                   const double (&b)[R], double (&y)[R]) {
-  for (int i = 0; i < R; i++) {
-    double s = b[i];
-    for (int j = 0; j < C; j++) s += W[i][j] * x[j];
-    y[i] = s;
-  }
+static void dense_relu(const double (&W)[R][C], const double X[][C],
+                       const double (&b)[R], double Y[][R], int m) {
+  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++)
+    for (int k = 0; k < R; k++) {
+      double s = b[k];
+      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
+      Y[i][k] = (s > 0.0) ? s : 0.0;
+    }
 }
 
-static void relu_inplace(double * v, int n) {
-  for (int i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
+/* Y = softmax(X W^T + b) (各行で softmax) : W は R×C, X は m×C, Y は m×R。行ごとに独立。 */
+template <int R, int C>
+static void dense_softmax(const double (&W)[R][C], const double X[][C],
+                          const double (&b)[R], double Y[][R], int m) {
+  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++) {
+    double mx = -1e300;
+    for (int k = 0; k < R; k++) {
+      double s = b[k];
+      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
+      Y[i][k] = s; if (s > mx) mx = s;
+    }
+    double sum = 0.0;
+    for (int k = 0; k < R; k++) { Y[i][k] = exp(Y[i][k] - mx); sum += Y[i][k]; }
+    for (int k = 0; k < R; k++) Y[i][k] /= sum;
+  }
 }
 
 static int argmax(const double * v, int n) {
@@ -109,35 +134,40 @@ static int argmax(const double * v, int n) {
   return best;
 }
 
-/* i 番目の画像 (net.x[i]) を MLP に通して予測クラスを返す (中間は net.h[i], net.o[i]) */
-static int predict(Net & net, int i) {
-  matvec(net.W1, net.x[i], net.b1, net.h[i]); relu_inplace(net.h[i], HID);
-  matvec(net.W2, net.h[i], net.b2, net.o[i]);
-  return argmax(net.o[i], OUT);
+/* バッチ全体を前向き計算: H = ReLU(W1 X + b1), P = softmax(W2 H + b2) */
+static void forward(Net & net, int m) {
+  dense_relu   (net.W1, net.X, net.b1, net.H, m);
+  dense_softmax(net.W2, net.H, net.b2, net.P, m);
+}
+
+/* 予測クラス (argmax P) と正解ラベルを比べ, 正解数を返す */
+static long count_correct(Net & net, int m) {
+  long correct = 0;
+  // TODO: 各画像の判定を並列化して正解数を集計する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for reduction(+:correct)
+  // END ANSWER
+  for (int i = 0; i < m; i++)
+    if (argmax(net.P[i], OUT) == (int)net.y[i]) correct++;
+  return correct;
 }
 
 /* ====================== main ====================== */
-/* Net は画像・中間も含み大きいので, スタックではなく静的領域に置く。 */
-static Net net;
+static Net net;          /* 画像・中間も含み大きいので静的領域に置く */
 
 int main(int argc, char ** argv) {
-  /* 学習済みの重みと, テスト画像・ラベルを Net に直接読み込む (x,y は容量 MAXN) */
   load_npy("data/W1.npy", &net.W1[0][0], HID, IN);
   load_npy("data/b1.npy", net.b1, HID, 0);
   load_npy("data/W2.npy", &net.W2[0][0], OUT, HID);
   load_npy("data/b2.npy", net.b2, OUT, 0);
-  int NT = (int)load_npy("data/x_test.npy", &net.x[0][0], MAXN, IN);
+  int NT = (int)load_npy("data/x_test.npy", &net.X[0][0], MAXN, IN);
               load_npy("data/y_test.npy", net.y, MAXN, 0);
-  for (long k = 0; k < (long)NT * IN; k++) (&net.x[0][0])[k] /= 255.0;   /* 0..255 -> 0..1 */
+  for (long k = 0; k < (long)NT * IN; k++) (&net.X[0][0])[k] /= 255.0;   /* 0..255 -> 0..1 */
 
-  /* 推論: 各画像の予測クラスと正解ラベルを比べ, 正解数を数える。各画像は独立。 */
-  long correct = 0;
+  /* 全画像をまとめて forward し, 正解数を数える */
   double t0 = omp_get_wtime();
-  // BEGIN ANSWER
-#pragma omp parallel for reduction(+:correct)
-  // END ANSWER
-  for (int i = 0; i < NT; i++)
-    if (predict(net, i) == (int)net.y[i]) correct++;
+  forward(net, NT);
+  long correct = count_correct(net, NT);
   double elapsed = omp_get_wtime() - t0;
 
   printf("MNIST テスト %d 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",

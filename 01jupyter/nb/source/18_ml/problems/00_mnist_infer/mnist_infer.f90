@@ -2,10 +2,10 @@
 !   data/W1.npy, b1.npy, W2.npy, b2.npy : 学習済みの重み (float64)
 !   data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
 !   data/y_test.npy : 正解ラベル (int32 [N], 0..9)
-! 推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
-! ネットワークの大きさは定数なので, 重み・画像・ラベル・中間結果を固定サイズ配列で
-! 派生型 net_t にまとめる。中間 h,o も画像ごとに net%h(:,i),net%o(:,i) として持つ
-! (スレッドが別々の列を書くので競合しない)。matvec は assumed-shape で任意サイズに対応。
+! テスト画像 NT 枚を「行列」としてまとめて前向き計算する:
+!   H = ReLU(W1 X + b1) = dense_relu,  P = softmax(W2 H + b2) = dense_softmax
+! 各ステップはバッチ中の全サンプルを一度に処理する。列(=サンプル)ごとに独立なので,
+! その列のループを並列化できる。matvec 相当は assumed-shape で任意サイズに1つで対応。
 ! net_t は allocatable 成分を持たないので GPU 発展で map(to: net) がそのまま使える。
 
 module mlp
@@ -14,8 +14,8 @@ module mlp
   integer, parameter :: MAXN = 10000          ! テスト画像の最大枚数 (超える分は読まない)
   type :: net_t
      real(8) :: W1(IN,HID), b1(HID), W2(HID,OUT), b2(OUT)   ! 学習済みの重み
-     real(8) :: x(IN,MAXN), y(MAXN)                         ! テスト画像(列=1枚)とラベル
-     real(8) :: h(HID,MAXN), o(OUT,MAXN)                    ! 中間: 各画像の隠れ層・出力
+     real(8) :: X(IN,MAXN), y(MAXN)                         ! テスト画像(列=1枚)とラベル
+     real(8) :: H(HID,MAXN), P(OUT,MAXN)                    ! 中間: 隠れ層, 出力確率 (バッチ全体)
   end type net_t
 contains
   ! --- .npy を読み, 任意の数値型を double として dst に直接書き込む (C順)。形を shp に返す。
@@ -61,7 +61,7 @@ contains
     end if
     shp(1) = s0
     if (ndim == 2) shp(2) = s1
-    if (.not. present(dst)) then; close(u); return; end if   ! 形だけ
+    if (.not. present(dst)) then; close(u); return; end if
     rows = s0
     if (present(maxrows)) then; if (maxrows >= 0 .and. s0 > maxrows) rows = maxrows; end if
     n = rows * merge(int(s1,8), 1_8, ndim == 2)
@@ -91,29 +91,80 @@ contains
     nrows = min(shp(1), cap)
   end function load_npy
 
-  ! --- 行列ベクトル積 + バイアス: y = W x + b  (W(n_in,n_out), assumed-shape) ---
-  subroutine matvec(W, b, x, y)
-    real(8), intent(in)  :: W(:,:), b(:), x(:)
-    real(8), intent(out) :: y(:)
-    integer :: k, j
-    do k = 1, size(W,2)
-       y(k) = b(k)
-       do j = 1, size(W,1)
-          y(k) = y(k) + W(j,k) * x(j)
+  ! --- バッチ行列演算: Y = ReLU(W X + b)。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i 独立 ---
+  subroutine dense_relu(W, b, X, Y, m)
+    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
+    real(8), intent(out) :: Y(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, j
+    real(8) :: s
+    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,j,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,2)
+          s = b(k)
+          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
+          Y(k,i) = max(0.0d0, s)
        end do
     end do
-  end subroutine matvec
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine dense_relu
 
-  ! --- i 番目の画像 (net%x(:,i)) を MLP に通して予測クラス(0..9)を返す ---
-  function predict(net, i) result(cls)
+  ! --- バッチ行列演算: Y = softmax(W X + b) (各列で softmax)。列 i 独立 ---
+  subroutine dense_softmax(W, b, X, Y, m)
+    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
+    real(8), intent(out) :: Y(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, j
+    real(8) :: s
+    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,j,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,2)
+          s = b(k)
+          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
+          Y(k,i) = s
+       end do
+       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
+       Y(:,i) = Y(:,i) / sum(Y(:,i))
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine dense_softmax
+
+  ! --- バッチ全体を前向き計算 ---
+  subroutine forward(net, m)
     type(net_t), intent(inout) :: net
-    integer, intent(in) :: i
-    integer :: cls
-    call matvec(net%W1, net%b1, net%x(:,i), net%h(:,i))
-    net%h(:,i) = max(0.0d0, net%h(:,i))
-    call matvec(net%W2, net%b2, net%h(:,i), net%o(:,i))
-    cls = maxloc(net%o(:,i), 1) - 1               ! argmax (クラスは 0 始まり)
-  end function predict
+    integer, intent(in) :: m
+    call dense_relu   (net%W1, net%b1, net%X, net%H, m)   ! H = ReLU(W1 X + b1)
+    call dense_softmax(net%W2, net%b2, net%H, net%P, m)   ! P = softmax(W2 H + b2)
+  end subroutine forward
+
+  ! --- 予測クラス(argmax P)と正解ラベルを比べ正解数を返す ---
+  function count_correct(net, m) result(correct)
+    type(net_t), intent(in) :: net
+    integer, intent(in) :: m
+    integer(8) :: correct
+    integer :: i
+    correct = 0
+    ! TODO: 各画像の判定を並列化して正解数を集計する (列 i 独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i) reduction(+:correct)
+    ! END ANSWER
+    do i = 1, m
+       if (maxloc(net%P(:,i),1)-1 == nint(net%y(i))) correct = correct + 1
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end function count_correct
 end module mlp
 
 program mnist_infer
@@ -122,34 +173,25 @@ program mnist_infer
   implicit none
   type(net_t), save :: net          ! 画像・中間も含み大きいので静的領域に置く
   integer :: NT, i
+  integer(8) :: correct
+  real(8) :: t0, elapsed
 
-  ! 重み・テスト画像・ラベルを Net に直接読み込む (x,y は容量 MAXN)
   i  = load_npy("data/W1.npy", net%W1, HID, IN)
   i  = load_npy("data/b1.npy", net%b1, HID, 0)
   i  = load_npy("data/W2.npy", net%W2, OUT, HID)
   i  = load_npy("data/b2.npy", net%b2, OUT, 0)
-  NT = load_npy("data/x_test.npy", net%x, MAXN, IN)
+  NT = load_npy("data/x_test.npy", net%X, MAXN, IN)
   i  = load_npy("data/y_test.npy", net%y, MAXN, 0)
-  net%x(:, 1:NT) = net%x(:, 1:NT) / 255.0d0     ! 0..255 -> 0..1
+  net%X(:, 1:NT) = net%X(:, 1:NT) / 255.0d0     ! 0..255 -> 0..1
 
-  block
-    integer(8) :: correct
-    real(8) :: t0, elapsed
-    correct = 0
-    t0 = omp_get_wtime()
-    ! BEGIN ANSWER
-    !$omp parallel do private(i) reduction(+:correct)
-    ! END ANSWER
-    do i = 1, NT
-       if (predict(net, i) == nint(net%y(i))) correct = correct + 1
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-    elapsed = omp_get_wtime() - t0
-    print "(a,i0,a,i0,a,f0.2,a)", &
-         "MNIST テスト ", NT, " 枚: 正解 ", correct, " 枚, 正解率 = ", &
-         100.0d0 * correct / NT, " %"
-    print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
-  end block
+  ! 全画像をまとめて forward し, 正解数を数える
+  t0 = omp_get_wtime()
+  call forward(net, NT)
+  correct = count_correct(net, NT)
+  elapsed = omp_get_wtime() - t0
+
+  print "(a,i0,a,i0,a,f0.2,a)", &
+       "MNIST テスト ", NT, " 枚: 正解 ", correct, " 枚, 正解率 = ", &
+       100.0d0 * correct / NT, " %"
+  print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program mnist_infer

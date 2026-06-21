@@ -1,15 +1,15 @@
 ! 多層パーセプトロン (MLP) を自分で学習させ, 本物の MNIST 手書き数字を分類する。
 ! ネットワーク: 入力 784 -> 隠れ層 HID=128 (ReLU) -> 出力 10クラス。
 !
-! ミニバッチ (m 枚) を「行列」として一度に流す:
-!   forward:  H = ReLU(W1 X + b1),  P = softmax(W2 H + b2)   (列が1サンプル)
-!   backward: dO = P - onehot(y),
-!             gW2 = dO H^T,  gb2 = Σ_列 dO,
-!             dH  = (W2^T dO)・[H>0],  gW1 = dH X^T,  gb1 = Σ_列 dH
+! ミニバッチ (m 枚) を「行列」としてまとめて流す。各ステップはバッチ中の全サンプルを
+! 一度に処理する行列演算で, forward / backward は下のプリミティブを呼ぶだけ:
+!   forward:  H = ReLU(W1 X + b1) = dense_relu,  P = softmax(W2 H + b2) = dense_softmax
+!   backward: dO = P - onehot(y)  = out_grad
+!             gW2,gb2 = grad_weight(H, dO),  dH = back_relu(dO, W2, H),  gW1,gb1 = grad_weight(X, dH)
 !   更新:     W -= (lr/m) gW
 ! 勾配は行列積で求まり, サンプル(バッチ)方向の和は行列積の内側の縮約になる。よって
-! 並列化は各行列積の独立な出力方向の単純な parallel do でよく, 配列 reduction は不要
-! (損失・正解数のスカラ集計だけ reduction を使う)。
+! 並列化は各プリミティブの独立な出力方向ループの parallel do だけでよく, 勾配への配列
+! reduction は不要 (損失・正解数のスカラ集計だけ reduction を使う)。
 ! パラメータ・バッチ・中間行列・勾配を固定サイズ配列で派生型 net_t にまとめる。
 ! net_t は allocatable 成分を持たないので GPU 発展で map(to: net) がそのまま使える。
 
@@ -19,22 +19,21 @@ module mlp
   integer, parameter :: MAX_BATCH = 1000        ! ミニバッチの最大サイズ
   type :: net_t
      real(8) :: W1(IN,HID), b1(HID), W2(HID,OUT), b2(OUT)        ! パラメータ
-     real(8) :: X(IN,MAX_BATCH)                                  ! 入力バッチ (列=1サンプル)
-     integer :: y(MAX_BATCH)                                     ! ラベルバッチ
+     real(8) :: X(IN,MAX_BATCH), y(MAX_BATCH)                    ! 入力バッチ(列=1枚)とラベル
      real(8) :: H(HID,MAX_BATCH), P(OUT,MAX_BATCH)               ! 中間 (forward)
      real(8) :: dO(OUT,MAX_BATCH), dH(HID,MAX_BATCH)             ! 中間 (backward)
      real(8) :: gW1(IN,HID), gb1(HID), gW2(HID,OUT), gb2(OUT)    ! 勾配
   end type net_t
 contains
-  ! --- .npy を読み, 任意の数値型を double として dst に直接書き込む (C順)。
-  !     形を shp(1..ndim) に返す。dst を省略すると形だけ取得 (peek)。 ---
-  subroutine read_npy(path, shp, ndim, dst)
+  ! --- .npy を読み, double として dst に直接書き込む。dst 省略で形だけ。maxrows で頭打ち。 ---
+  subroutine read_npy(path, shp, ndim, dst, maxrows)
     character(*), intent(in)  :: path
     integer, intent(in)       :: ndim
     integer, intent(out)      :: shp(ndim)
     real(8), intent(out), optional :: dst(*)
+    integer, intent(in),  optional :: maxrows
     integer :: u, hlen, p1, p2, ios, s0, s1, file_ndim
-    integer(8) :: n, i
+    integer(8) :: n, i, rows
     character(len=10) :: magic
     character(len=:), allocatable :: hdr, sub
     character(len=8) :: descr
@@ -68,8 +67,10 @@ contains
     end if
     shp(1) = s0
     if (ndim == 2) shp(2) = s1
-    if (.not. present(dst)) then; close(u); return; end if   ! 形だけ
-    n = int(s0,8) * merge(int(s1,8), 1_8, ndim == 2)
+    if (.not. present(dst)) then; close(u); return; end if
+    rows = s0
+    if (present(maxrows)) then; if (maxrows >= 0 .and. s0 > maxrows) rows = maxrows; end if
+    n = rows * merge(int(s1,8), 1_8, ndim == 2)
 
     select case (trim(descr))
     case ('<f8'); read(u) dst(1:n)
@@ -134,124 +135,160 @@ contains
     end do
   end subroutine init_he
 
-  ! --- 行列ベクトル積 + バイアス: y = W x + b  (W(n_in,n_out), assumed-shape) ---
-  subroutine matvec(W, b, x, y)
-    real(8), intent(in)  :: W(:,:), b(:), x(:)
-    real(8), intent(out) :: y(:)
-    integer :: k, j
-    do k = 1, size(W,2)
-       y(k) = b(k)
-       do j = 1, size(W,1)
-          y(k) = y(k) + W(j,k) * x(j)
+  ! ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ======================
+  ! Y = ReLU(W X + b)。W(n_in,n_out), X(n_in,:), Y(n_out,:)。列 i (サンプル) 独立。
+  subroutine dense_relu(W, b, X, Y, m)
+    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
+    real(8), intent(out) :: Y(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, j
+    real(8) :: s
+    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,j,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,2)
+          s = b(k)
+          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
+          Y(k,i) = max(0.0d0, s)
        end do
     end do
-  end subroutine matvec
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine dense_relu
 
-  subroutine softmax_inplace(v)
-    real(8), intent(inout) :: v(:)
-    v = exp(v - maxval(v)); v = v / sum(v)
-  end subroutine softmax_inplace
+  ! Y = softmax(W X + b) (各列で softmax)。列 i 独立。
+  subroutine dense_softmax(W, b, X, Y, m)
+    real(8), intent(in)  :: W(:,:), b(:), X(:,:)
+    real(8), intent(out) :: Y(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, j
+    real(8) :: s
+    ! TODO: 列 i (サンプル) のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,j,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,2)
+          s = b(k)
+          do j = 1, size(W,1); s = s + W(j,k)*X(j,i); end do
+          Y(k,i) = s
+       end do
+       Y(:,i) = exp(Y(:,i) - maxval(Y(:,i)))
+       Y(:,i) = Y(:,i) / sum(Y(:,i))
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine dense_softmax
 
-  ! --- forward: 各サンプル列 i は独立。H(:,i),P(:,i) を埋め, 損失と正解数を集計 ---
-  subroutine forward(net, m, loss, correct)
-    type(net_t), intent(inout) :: net
+  ! 出力誤差 dO = P - onehot(y)。列 i 独立。
+  subroutine out_grad(P, y, dO, m)
+    real(8), intent(in)  :: P(:,:), y(:)
+    real(8), intent(out) :: dO(:,:)
+    integer, intent(in)  :: m
+    integer :: i, c
+    ! TODO: 列 i のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,c)
+    ! END ANSWER
+    do i = 1, m
+       do c = 1, size(P,1); dO(c,i) = P(c,i) - merge(1.0d0, 0.0d0, c-1 == nint(y(i))); end do
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine out_grad
+
+  ! 重み勾配: G(a,b) = Σ_i U(a,i) V(b,i),  gb(b) = Σ_i V(b,i)。出力 b (列) ごと独立。
+  subroutine grad_weight(U, V, G, gb, m)
+    real(8), intent(in)  :: U(:,:), V(:,:)
+    real(8), intent(out) :: G(:,:), gb(:)
+    integer, intent(in)  :: m
+    integer :: a, b, i
+    real(8) :: s
+    ! TODO: 出力 b のループを並列化する (b ごと独立, バッチ i は内側の和)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(a,b,i,s)
+    ! END ANSWER
+    do b = 1, size(G,2)
+       s = 0.0d0
+       do i = 1, m; s = s + V(b,i); end do
+       gb(b) = s
+       do a = 1, size(G,1)
+          s = 0.0d0
+          do i = 1, m; s = s + U(a,i)*V(b,i); end do
+          G(a,b) = s
+       end do
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine grad_weight
+
+  ! 隠れ誤差 dX(k,i) = (Σ_c W(k,c) dY(c,i))・[Href>0]。列 i 独立。
+  subroutine back_relu(dY, W, Href, dX, m)
+    real(8), intent(in)  :: dY(:,:), W(:,:), Href(:,:)
+    real(8), intent(out) :: dX(:,:)
+    integer, intent(in)  :: m
+    integer :: i, k, c
+    real(8) :: s
+    ! TODO: 列 i のループを並列化する (各列は独立)。
+    ! BEGIN ANSWER
+    !$omp parallel do private(i,k,c,s)
+    ! END ANSWER
+    do i = 1, m
+       do k = 1, size(W,1)
+          s = 0.0d0
+          do c = 1, size(W,2); s = s + W(k,c)*dY(c,i); end do
+          dX(k,i) = merge(s, 0.0d0, Href(k,i) > 0.0d0)
+       end do
+    end do
+    ! BEGIN ANSWER
+    !$omp end parallel do
+    ! END ANSWER
+  end subroutine back_relu
+
+  ! バッチの損失と正解数を集計 (列 i 独立, スカラ reduction)
+  subroutine eval(net, m, loss, correct)
+    type(net_t), intent(in) :: net
     integer, intent(in) :: m
     real(8), intent(out) :: loss
     integer(8), intent(out) :: correct
     integer :: i
     loss = 0.0d0; correct = 0
-    ! TODO: 各サンプル列 i の forward を並列化する (列ごと独立, 損失・正解数はスカラ集計)。
+    ! TODO: 列 i のループを並列化して損失・正解数を集計する (スカラ reduction)。
     ! BEGIN ANSWER
     !$omp parallel do private(i) reduction(+:loss,correct)
     ! END ANSWER
     do i = 1, m
-       call matvec(net%W1, net%b1, net%X(:,i), net%H(:,i)); net%H(:,i) = max(0.0d0, net%H(:,i))
-       call matvec(net%W2, net%b2, net%H(:,i), net%P(:,i)); call softmax_inplace(net%P(:,i))
-       loss = loss - log(net%P(net%y(i)+1, i) + 1.0d-12)
-       if (maxloc(net%P(:,i),1)-1 == net%y(i)) correct = correct + 1
+       loss = loss - log(net%P(nint(net%y(i))+1, i) + 1.0d-12)
+       if (maxloc(net%P(:,i),1)-1 == nint(net%y(i))) correct = correct + 1
     end do
     ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
+  end subroutine eval
+
+  ! ====================== forward / backward / 更新 (プリミティブを呼ぶだけ) ======================
+  subroutine forward(net, m)
+    type(net_t), intent(inout) :: net
+    integer, intent(in) :: m
+    call dense_relu   (net%W1, net%b1, net%X, net%H, m)   ! H = ReLU(W1 X + b1)
+    call dense_softmax(net%W2, net%b2, net%H, net%P, m)   ! P = softmax(W2 H + b2)
   end subroutine forward
 
-  ! --- backward: 勾配を行列積で求める。各行列積の出力方向は独立なので reduction 不要 ---
   subroutine backward(net, m)
     type(net_t), intent(inout) :: net
     integer, intent(in) :: m
-    integer :: i, k, c, j
-    real(8) :: s
-
-    ! 出力誤差 dO = P - onehot(y) : 列 i ごと独立
-    ! TODO: dO を計算するループを並列化する (列 i ごと独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,c)
-    ! END ANSWER
-    do i = 1, m
-       do c = 1, OUT
-          net%dO(c,i) = net%P(c,i) - merge(1.0d0, 0.0d0, c == net%y(i)+1)
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-
-    ! gW2(k,c) = Σ_i H(k,i) dO(c,i), gb2(c) = Σ_i dO(c,i) : 出力 c ごと独立
-    ! TODO: gW2,gb2 を計算するループを並列化する (出力 c ごと独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(c,k,i,s)
-    ! END ANSWER
-    do c = 1, OUT
-       s = 0.0d0
-       do i = 1, m; s = s + net%dO(c,i); end do
-       net%gb2(c) = s
-       do k = 1, HID
-          s = 0.0d0
-          do i = 1, m; s = s + net%H(k,i) * net%dO(c,i); end do
-          net%gW2(k,c) = s
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-
-    ! 隠れ誤差 dH(k,i) = (Σ_c W2(k,c) dO(c,i))・[H>0] : 列 i ごと独立
-    ! TODO: dH を計算するループを並列化する (列 i ごと独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(i,k,c,s)
-    ! END ANSWER
-    do i = 1, m
-       do k = 1, HID
-          s = 0.0d0
-          do c = 1, OUT; s = s + net%W2(k,c) * net%dO(c,i); end do
-          net%dH(k,i) = merge(s, 0.0d0, net%H(k,i) > 0.0d0)
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
-
-    ! gW1(j,k) = Σ_i X(j,i) dH(k,i), gb1(k) = Σ_i dH(k,i) : 隠れ k ごと独立
-    ! TODO: gW1,gb1 を計算するループを並列化する (隠れ k ごと独立)。
-    ! BEGIN ANSWER
-    !$omp parallel do private(k,j,i,s)
-    ! END ANSWER
-    do k = 1, HID
-       s = 0.0d0
-       do i = 1, m; s = s + net%dH(k,i); end do
-       net%gb1(k) = s
-       do j = 1, IN
-          s = 0.0d0
-          do i = 1, m; s = s + net%X(j,i) * net%dH(k,i); end do
-          net%gW1(j,k) = s
-       end do
-    end do
-    ! BEGIN ANSWER
-    !$omp end parallel do
-    ! END ANSWER
+    call out_grad   (net%P, net%y, net%dO, m)                 ! dO = P - onehot(y)
+    call grad_weight(net%H, net%dO, net%gW2, net%gb2, m)      ! gW2 = Σ_i H dO^T, gb2 = Σ dO
+    call back_relu  (net%dO, net%W2, net%H, net%dH, m)        ! dH = (W2^T dO)・[H>0]
+    call grad_weight(net%X, net%dH, net%gW1, net%gb1, m)      ! gW1 = Σ_i X dH^T, gb1 = Σ dH
   end subroutine backward
 
-  ! --- 勾配降下の1ステップ: W -= (lr/m) gW ---
   subroutine sgd_update(net, m, lr)
     type(net_t), intent(inout) :: net
     integer, intent(in) :: m
@@ -262,29 +299,25 @@ contains
     net%W2 = net%W2 - sc*net%gW2; net%b2 = net%b2 - sc*net%gb2
   end subroutine sgd_update
 
-  ! --- 訓練データ (画像と正解ラベル) を読み込む。画像は 0..1 に正規化し, X,y を確保して返す
-  !     (枚数 N は可変なので, まず形だけ見てから確保する) ---
+  ! ====================== データ読み込み ======================
+  ! 訓練データ (画像と正解ラベル) を読み込む。画像は 0..1 に正規化し, X,y を確保して返す。
   subroutine load_dataset(xpath, ypath, X, y, N)
     character(*), intent(in) :: xpath, ypath
-    real(8), allocatable, intent(out) :: X(:,:)
-    integer, allocatable, intent(out) :: y(:)
+    real(8), allocatable, intent(out) :: X(:,:), y(:)
     integer(8), intent(out) :: N
     integer :: sh(2)
-    real(8), allocatable :: yd(:)
     call read_npy(xpath, sh, 2)          ! dst 省略で形だけ
     N = sh(1)
-    allocate(X(IN, N), y(N), yd(N))
+    allocate(X(IN, N), y(N))
     call read_npy(xpath, sh, 2, X)       ! 列が1サンプル
     X = X / 255.0d0
-    call read_npy(ypath, sh, 1, yd)
-    y = nint(yd)
+    call read_npy(ypath, sh, 1, y)
   end subroutine load_dataset
 
-  ! --- 全データの b0+1..b0+m の m 枚を net%X, net%y にコピーする ---
+  ! 全データの b0+1..b0+m の m 枚を net%X, net%y にコピーする
   subroutine load_batch(net, Xall, yall, b0, m)
     type(net_t), intent(inout) :: net
-    real(8), intent(in) :: Xall(:,:)
-    integer, intent(in) :: yall(:)
+    real(8), intent(in) :: Xall(:,:), yall(:)
     integer(8), intent(in) :: b0
     integer, intent(in) :: m
     integer :: i
@@ -304,8 +337,7 @@ program mlp_train
   integer :: E, BS, ep, m
   integer(8) :: N, b0, bl_correct, correct
   real(8) :: lr, loss, bl_loss, t0, elapsed
-  real(8), allocatable :: Xall(:,:)
-  integer, allocatable :: yall(:)
+  real(8), allocatable :: Xall(:,:), yall(:)
 
   E = 20; lr = 0.1d0; BS = 100
   if (command_argument_count() >= 1) then; call get_command_argument(1, arg); read(arg,*) E;  end if
@@ -313,10 +345,8 @@ program mlp_train
   if (command_argument_count() >= 3) then; call get_command_argument(3, arg); read(arg,*) BS; end if
   if (BS > MAX_BATCH) then; print "(a,i0,a)", "BS は ", MAX_BATCH, " 以下にしてください"; stop 1; end if
 
-  ! 訓練データ全体 (画像と正解ラベル) を読み込む
   call load_dataset("data/x_train.npy", "data/y_train.npy", Xall, yall, N)
 
-  ! パラメータ初期化 (He 初期化, バイアスは 0)
   call init_he(net%W1, 1_8); call init_he(net%W2, 2_8)
   net%b1 = 0.0d0; net%b2 = 0.0d0
 
@@ -326,8 +356,9 @@ program mlp_train
      loss = 0.0d0; correct = 0
      do b0 = 0, N - 1, BS
         m = int(min(int(BS,8), N - b0))
-        call load_batch(net, Xall, yall, b0, m)      ! 今のバッチを net%X, net%y にコピー
-        call forward(net, m, bl_loss, bl_correct)
+        call load_batch(net, Xall, yall, b0, m)
+        call forward(net, m)
+        call eval(net, m, bl_loss, bl_correct)
         loss = loss + bl_loss; correct = correct + bl_correct
         call backward(net, m)
         call sgd_update(net, m, lr)
@@ -343,7 +374,6 @@ program mlp_train
        ", epochs=", E, ", loss=", loss, ", train acc=", 100.0d0*correct/N, "%"
   print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 
-  ! 学習済みの重みを .npy で書き出す (列優先 W1(IN,HID) の線形並び = C順 (HID,IN))
   call write_npy("data/W1.npy", reshape(net%W1, [IN*HID]), HID, IN)
   call write_npy("data/b1.npy", net%b1, HID, 0)
   call write_npy("data/W2.npy", reshape(net%W2, [HID*OUT]), OUT, HID)

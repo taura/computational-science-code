@@ -7,36 +7,35 @@
 /* 多層パーセプトロン (MLP) を自分で学習させ, 本物の MNIST 手書き数字を分類する。
    ネットワーク: 入力 784 -> 隠れ層 HID=128 (ReLU) -> 出力 10クラス。
 
-   ミニバッチ (m 枚) を「行列」として一度に流す:
-     forward:  H = ReLU(X W1^T + b1),  P = softmax(H W2^T + b2)
-       X:[m,IN]  H:[m,HID]  P:[m,OUT]
-     backward: dO = P - onehot(y),
-       gW2 = dO^T H,  gb2 = Σ_行 dO,
-       dH  = (dO W2)・[H>0],  gW1 = dH^T X,  gb1 = Σ_行 dH
-     更新:     W -= (lr/m) * gW
-   勾配 (gW2 等) は「行列積」で求まり, サンプル(バッチ)方向の和は行列積の内側の
-   縮約になる。よって並列化は各行列積の独立な出力方向の単純な parallel for でよく,
+   ミニバッチ (m 枚) を「行列」としてまとめて流す。各ステップはバッチ中の全サンプルを
+   一度に処理する行列演算で, forward / backward は下のプリミティブを呼ぶだけ:
+     forward:  H = ReLU(W1 X + b1)   = dense_relu
+               P = softmax(W2 H + b2) = dense_softmax
+     backward: dO = P - onehot(y)     = out_grad
+               gW2,gb2 = (dO,H から)  = grad_weight   (= dO^T H, 列和)
+               dH = (dO W2)・[H>0]    = back_relu
+               gW1,gb1 = (dH,X から)  = grad_weight
+     更新:     W -= (lr/m) gW
+   勾配は行列積で求まり, サンプル(バッチ)方向の和は行列積の内側の縮約になる。よって
+   並列化は各プリミティブの独立な出力方向ループの parallel for だけでよく, 勾配への
    配列 reduction は不要 (損失・正解数のスカラ集計だけ reduction を使う)。
 
-   ネットワークの大きさは定数なので, パラメータ・バッチ・中間行列・勾配をすべて
-   固定サイズ配列で1つの構造体 Net にまとめる。Net は内部にポインタを持たないので
-   GPU 発展では map(to: net) でまるごと送れる。 */
+   パラメータ・バッチ・中間行列・勾配を固定サイズ配列で1つの構造体 Net にまとめる。
+   Net は内部にポインタを持たないので, GPU 発展では map(to: net) でまるごと送れる。 */
 
 static const int IN = 784, HID = 128, OUT = 10;
 static const int MAX_BATCH = 1000;       /* ミニバッチの最大サイズ */
 
 struct Net {
   double W1[HID][IN], b1[HID], W2[OUT][HID], b2[OUT];  /* パラメータ */
-  double X[MAX_BATCH][IN];  int y[MAX_BATCH];          /* 現在のバッチ (入力とラベル) */
-  double H[MAX_BATCH][HID], P[MAX_BATCH][OUT];         /* 中間 (forward): 隠れ層, 出力確率 */
-  double dO[MAX_BATCH][OUT], dH[MAX_BATCH][HID];       /* 中間 (backward): 出力誤差, 隠れ誤差 */
+  double X[MAX_BATCH][IN]; double y[MAX_BATCH];        /* 現在のバッチ (入力とラベル) */
+  double H[MAX_BATCH][HID], P[MAX_BATCH][OUT];         /* 中間 (forward) */
+  double dO[MAX_BATCH][OUT], dH[MAX_BATCH][HID];       /* 中間 (backward) */
   double gW1[HID][IN], gb1[HID], gW2[OUT][HID], gb2[OUT];   /* 勾配 */
 };
 
 /* ====================== .npy 入出力 ====================== */
-/* .npy を読み, 任意の数値型を double として dst に直接書き込む (C順)。次元数 ndim は
-   呼び出し側が指定し, ファイルの次元が違えばエラー。形を shape[0..ndim-1] に返す。 */
-static void read_npy(const char * path, double * dst, long * shape, int ndim) {
+static void read_npy(const char * path, double * dst, long * shape, int ndim, long maxrows = -1) {
   FILE * f = fopen(path, "rb");
   if (!f) { printf("%s が開けません\n", path); exit(1); }
   unsigned char magic[10];
@@ -59,11 +58,12 @@ static void read_npy(const char * path, double * dst, long * shape, int ndim) {
     printf("%s: %d 次元を期待しましたが %d 次元でした\n", path, ndim, file_ndim); exit(1);
   }
   shape[0] = s0;
-  long n = s0;
-  if (ndim == 2) { shape[1] = s1; n *= s1; }
+  if (ndim == 2) shape[1] = s1;
   delete[] hdr;
-  if (dst == nullptr) { fclose(f); return; }   /* 形だけ知りたいとき (dst=nullptr) */
+  if (dst == nullptr) { fclose(f); return; }              /* 形だけ (peek) */
 
+  long rows = (maxrows >= 0 && s0 > maxrows) ? maxrows : s0;
+  long n = rows * (ndim == 2 ? s1 : 1);
   if (!strcmp(descr, "<f8")) {
     fread(dst, sizeof(double), n, f);
   } else if (!strcmp(descr, "<f4")) {
@@ -84,7 +84,6 @@ static void read_npy(const char * path, double * dst, long * shape, int ndim) {
   fclose(f);
 }
 
-/* double 配列を float64 の .npy として書き出す (C順, s1=0 なら1次元) */
 static void write_npy(const char * path, const double * data, long s0, long s1) {
   FILE * f = fopen(path, "wb");
   if (!f) { printf("%s が書けません\n", path); exit(1); }
@@ -108,28 +107,90 @@ static void write_npy(const char * path, const double * data, long s0, long s1) 
   fclose(f);
 }
 
-/* ====================== 行列演算・活性化 ====================== */
-/* 行列ベクトル積 + バイアス: y = W x + b  (W は R×C, サイズは型から自動で決まる) */
+/* ====================== バッチ行列演算 (各ステップが m 枚を一度に処理) ====================== */
+/* Y = ReLU(X W^T + b) : W は R×C, X は m×C, Y は m×R。行 i (サンプル) ごとに独立。 */
 template <int R, int C>
-static void matvec(const double (&W)[R][C], const double * x,
-                   const double (&b)[R], double (&y)[R]) {
-  for (int i = 0; i < R; i++) {
-    double s = b[i];
-    for (int j = 0; j < C; j++) s += W[i][j] * x[j];
-    y[i] = s;
+static void dense_relu(const double (&W)[R][C], const double X[][C],
+                       const double (&b)[R], double Y[][R], int m) {
+  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++)
+    for (int k = 0; k < R; k++) {
+      double s = b[k];
+      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
+      Y[i][k] = (s > 0.0) ? s : 0.0;
+    }
+}
+
+/* Y = softmax(X W^T + b) (各行で softmax) : W は R×C, X は m×C, Y は m×R。行ごとに独立。 */
+template <int R, int C>
+static void dense_softmax(const double (&W)[R][C], const double X[][C],
+                          const double (&b)[R], double Y[][R], int m) {
+  // TODO: 行 i (サンプル) のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++) {
+    double mx = -1e300;
+    for (int k = 0; k < R; k++) {
+      double s = b[k];
+      for (int j = 0; j < C; j++) s += W[k][j] * X[i][j];
+      Y[i][k] = s; if (s > mx) mx = s;
+    }
+    double sum = 0.0;
+    for (int k = 0; k < R; k++) { Y[i][k] = exp(Y[i][k] - mx); sum += Y[i][k]; }
+    for (int k = 0; k < R; k++) Y[i][k] /= sum;
   }
 }
 
-static void relu_inplace(double * v, int n) {
-  for (int i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
+/* 出力誤差 dO = P - onehot(y) : 行 i ごとに独立 */
+template <int R>
+static void out_grad(const double P[][R], const double * y, double dO[][R], int m) {
+  // TODO: 行 i のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++)
+    for (int c = 0; c < R; c++) dO[i][c] = P[i][c] - (c == (int)y[i] ? 1.0 : 0.0);
 }
 
-static void softmax_inplace(double * v, int n) {
-  double mx = v[0];
-  for (int i = 1; i < n; i++) if (v[i] > mx) mx = v[i];
-  double s = 0.0;
-  for (int i = 0; i < n; i++) { v[i] = exp(v[i] - mx); s += v[i]; }
-  for (int i = 0; i < n; i++) v[i] /= s;
+/* 重み勾配: G = A^T B (バッチ和), gb = 列和(A)。A は m×R, B は m×C, G は R×C, gb は R。
+   出力 k ごとに独立 (バッチ i は内側の和)。 */
+template <int R, int C>
+static void grad_weight(const double A[][R], const double B[][C],
+                        double (&G)[R][C], double (&gb)[R], int m) {
+  // TODO: 出力 k のループを並列化する (k ごと独立, バッチ i は内側の和)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int k = 0; k < R; k++) {
+    double sb = 0.0;
+    for (int i = 0; i < m; i++) sb += A[i][k];
+    gb[k] = sb;
+    for (int j = 0; j < C; j++) {
+      double s = 0.0;
+      for (int i = 0; i < m; i++) s += A[i][k] * B[i][j];
+      G[k][j] = s;
+    }
+  }
+}
+
+/* 隠れ誤差 dX = (dY W)・[Href>0] : dY は m×R, W は R×C, Href/dX は m×C。行 i ごとに独立。 */
+template <int R, int C>
+static void back_relu(const double dY[][R], const double (&W)[R][C],
+                      const double Href[][C], double dX[][C], int m) {
+  // TODO: 行 i のループを並列化する (各行は独立)。
+  // BEGIN ANSWER
+#pragma omp parallel for
+  // END ANSWER
+  for (int i = 0; i < m; i++)
+    for (int j = 0; j < C; j++) {
+      double s = 0.0;
+      for (int k = 0; k < R; k++) s += dY[i][k] * W[k][j];
+      dX[i][j] = (Href[i][j] > 0.0) ? s : 0.0;
+    }
 }
 
 static int argmax(const double * v, int n) {
@@ -138,7 +199,43 @@ static int argmax(const double * v, int n) {
   return best;
 }
 
-/* 状態を持たない乱数 (初期値生成用): (seed,k) から [0,1)。 */
+/* バッチの損失と正解数を集計する (行ごと独立, スカラ reduction) */
+struct LossCorrect { double loss; long correct; };
+static LossCorrect eval(Net & net, int m) {
+  double loss = 0.0; long correct = 0;
+  // TODO: 行 i のループを並列化して損失・正解数を集計する (スカラ reduction)。
+  // BEGIN ANSWER
+#pragma omp parallel for reduction(+:loss,correct)
+  // END ANSWER
+  for (int i = 0; i < m; i++) {
+    loss -= log(net.P[i][(int)net.y[i]] + 1e-12);
+    if (argmax(net.P[i], OUT) == (int)net.y[i]) correct++;
+  }
+  return {loss, correct};
+}
+
+/* ====================== forward / backward / 更新 (プリミティブを呼ぶだけ) ====================== */
+static void forward(Net & net, int m) {
+  dense_relu   (net.W1, net.X, net.b1, net.H, m);   /* H = ReLU(W1 X + b1) */
+  dense_softmax(net.W2, net.H, net.b2, net.P, m);   /* P = softmax(W2 H + b2) */
+}
+
+static void backward(Net & net, int m) {
+  out_grad   (net.P, net.y, net.dO, m);                  /* dO = P - onehot(y)        */
+  grad_weight(net.dO, net.H, net.gW2, net.gb2, m);       /* gW2 = dO^T H, gb2 = Σ dO  */
+  back_relu  (net.dO, net.W2, net.H, net.dH, m);         /* dH = (dO W2)・[H>0]       */
+  grad_weight(net.dH, net.X, net.gW1, net.gb1, m);       /* gW1 = dH^T X, gb1 = Σ dH  */
+}
+
+static void sgd_update(Net & net, int m, double lr) {
+  double sc = lr / (double)m;
+  for (long k = 0; k < (long)HID * IN; k++)  (&net.W1[0][0])[k] -= sc * (&net.gW1[0][0])[k];
+  for (int k = 0; k < HID; k++)              net.b1[k] -= sc * net.gb1[k];
+  for (long k = 0; k < (long)OUT * HID; k++) (&net.W2[0][0])[k] -= sc * (&net.gW2[0][0])[k];
+  for (int c = 0; c < OUT; c++)              net.b2[c] -= sc * net.gb2[c];
+}
+
+/* ====================== 初期化・データ読み込み ====================== */
 static inline double draw_rand01(long long seed, long long k) {
   const long long M = 2147483647LL;
   long long x = ((seed % M) * 2654435761LL + (k % M) + 1) % M;
@@ -153,94 +250,10 @@ static void init_he(double * w, long total, int n_in, long long salt) {
   for (long k = 0; k < total; k++) w[k] = (draw_rand01(k, salt) - 0.5) * scale;
 }
 
-/* ====================== 学習の心臓部 (バッチ m 枚を行列で処理) ====================== */
-struct LossCorrect { double loss; long correct; };
-
-/* forward: 各サンプル行 i は独立。H[i], P[i] を埋め, 損失と正解数を集計して返す。 */
-static LossCorrect forward(Net & net, int m) {
-  double loss = 0.0; long correct = 0;
-  // TODO: 各サンプル行 i の forward を並列化する (行ごと独立, 損失・正解数はスカラ集計)。
-  // BEGIN ANSWER
-#pragma omp parallel for reduction(+:loss,correct)
-  // END ANSWER
-  for (int i = 0; i < m; i++) {
-    matvec(net.W1, net.X[i], net.b1, net.H[i]); relu_inplace(net.H[i], HID);
-    matvec(net.W2, net.H[i], net.b2, net.P[i]); softmax_inplace(net.P[i], OUT);
-    loss -= log(net.P[i][net.y[i]] + 1e-12);
-    if (argmax(net.P[i], OUT) == net.y[i]) correct++;
-  }
-  return {loss, correct};
-}
-
-/* backward: 勾配を行列積で求める。各行列積の出力方向は独立なので reduction は不要。 */
-static void backward(Net & net, int m) {
-  /* 出力誤差 dO = P - onehot(y) : 行 i ごと独立 */
-  // TODO: dO を計算するループを並列化する (行 i ごと独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int i = 0; i < m; i++)
-    for (int c = 0; c < OUT; c++) net.dO[i][c] = net.P[i][c] - (c == net.y[i] ? 1.0 : 0.0);
-
-  /* gW2 = dO^T H, gb2 = Σ_行 dO : 出力 c ごと独立 (バッチ i は内側の和) */
-  // TODO: gW2,gb2 を計算するループを並列化する (出力 c ごと独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int c = 0; c < OUT; c++) {
-    double sb = 0.0;
-    for (int i = 0; i < m; i++) sb += net.dO[i][c];
-    net.gb2[c] = sb;
-    for (int k = 0; k < HID; k++) {
-      double s = 0.0;
-      for (int i = 0; i < m; i++) s += net.dO[i][c] * net.H[i][k];
-      net.gW2[c][k] = s;
-    }
-  }
-
-  /* 隠れ誤差 dH = (dO W2)・[H>0] : 行 i ごと独立 */
-  // TODO: dH を計算するループを並列化する (行 i ごと独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int i = 0; i < m; i++)
-    for (int k = 0; k < HID; k++) {
-      double s = 0.0;
-      for (int c = 0; c < OUT; c++) s += net.dO[i][c] * net.W2[c][k];
-      net.dH[i][k] = (net.H[i][k] > 0.0) ? s : 0.0;
-    }
-
-  /* gW1 = dH^T X, gb1 = Σ_行 dH : 隠れ k ごと独立 */
-  // TODO: gW1,gb1 を計算するループを並列化する (隠れ k ごと独立)。
-  // BEGIN ANSWER
-#pragma omp parallel for
-  // END ANSWER
-  for (int k = 0; k < HID; k++) {
-    double sb = 0.0;
-    for (int i = 0; i < m; i++) sb += net.dH[i][k];
-    net.gb1[k] = sb;
-    for (int j = 0; j < IN; j++) {
-      double s = 0.0;
-      for (int i = 0; i < m; i++) s += net.dH[i][k] * net.X[i][j];
-      net.gW1[k][j] = s;
-    }
-  }
-}
-
-/* 勾配降下の1ステップ: W -= (lr/m) gW (バッチ平均の勾配で降下) */
-static void sgd_update(Net & net, int m, double lr) {
-  double sc = lr / (double)m;
-  for (long k = 0; k < (long)HID * IN; k++)  (&net.W1[0][0])[k] -= sc * (&net.gW1[0][0])[k];
-  for (int k = 0; k < HID; k++)              net.b1[k] -= sc * net.gb1[k];
-  for (long k = 0; k < (long)OUT * HID; k++) (&net.W2[0][0])[k] -= sc * (&net.gW2[0][0])[k];
-  for (int c = 0; c < OUT; c++)              net.b2[c] -= sc * net.gb2[c];
-}
-
-/* 配列をゼロで埋める */
 static void zero(double * v, long n) { for (long i = 0; i < n; i++) v[i] = 0.0; }
 
 /* 全データの b0..b0+m-1 の m 枚を net.X, net.y にコピーする */
-static void load_batch(Net & net, const double * Xall, const int * yall, long b0, int m) {
+static void load_batch(Net & net, const double * Xall, const double * yall, long b0, int m) {
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < IN; j++) net.X[i][j] = Xall[(b0 + i) * IN + j];
     net.y[i] = yall[b0 + i];
@@ -249,18 +262,15 @@ static void load_batch(Net & net, const double * Xall, const int * yall, long b0
 
 /* 訓練データ (画像と正解ラベル) を .npy から読み込む。画像は 0..1 に正規化し,
    X, y を新たに確保して返し, 枚数 N を返す (枚数は可変なのでまず形を見てから確保)。 */
-static long load_dataset(const char * xpath, const char * ypath, double *& X, int *& y) {
+static long load_dataset(const char * xpath, const char * ypath, double *& X, double *& y) {
   long sh[2];
-  read_npy(xpath, nullptr, sh, 2);          /* dst=nullptr で形だけ取得 */
+  read_npy(xpath, nullptr, sh, 2);
   long N = sh[0];
   X = new double[N * IN];
   read_npy(xpath, X, sh, 2);
   for (long i = 0; i < N * IN; i++) X[i] /= 255.0;
-  double * yd = new double[N];
-  read_npy(ypath, yd, sh, 1);
-  y = new int[N];
-  for (long i = 0; i < N; i++) y[i] = (int)yd[i];
-  delete[] yd;
+  y = new double[N];
+  read_npy(ypath, y, sh, 1);
   return N;
 }
 
@@ -273,11 +283,9 @@ int main(int argc, char ** argv) {
   int    BS = (argc > 3 ? atoi(argv[3]) : 100);   /* ミニバッチサイズ */
   if (BS > MAX_BATCH) { printf("BS は %d 以下にしてください\n", MAX_BATCH); return 1; }
 
-  /* 訓練データ全体 (画像と正解ラベル) を読み込む */
-  double * Xall; int * yall;
+  double * Xall; double * yall;
   long N = load_dataset("data/x_train.npy", "data/y_train.npy", Xall, yall);
 
-  /* パラメータ初期化 (He 初期化, バイアスは 0) */
   init_he(&net.W1[0][0], (long)HID * IN, IN, 1);
   init_he(&net.W2[0][0], (long)OUT * HID, HID, 2);
   zero(net.b1, HID); zero(net.b2, OUT);
@@ -288,8 +296,9 @@ int main(int argc, char ** argv) {
     loss = 0.0; correct = 0;
     for (long b0 = 0; b0 < N; b0 += BS) {
       int m = (int)((b0 + BS < N) ? BS : N - b0);
-      load_batch(net, Xall, yall, b0, m);          /* 今のバッチを net.X, net.y にコピー */
-      LossCorrect r = forward(net, m);
+      load_batch(net, Xall, yall, b0, m);
+      forward(net, m);
+      LossCorrect r = eval(net, m);
       loss += r.loss; correct += r.correct;
       backward(net, m);
       sgd_update(net, m, lr);
