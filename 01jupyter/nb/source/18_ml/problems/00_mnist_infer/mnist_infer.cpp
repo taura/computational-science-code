@@ -1,89 +1,71 @@
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
 #include <omp.h>
 
-/* 状態を持たない乱数 (重み・入力の生成用): (seed,k) から [0,1)。 */
-static inline double draw_rand01(long long seed, long long k) {
-  const long long M = 2147483647LL;
-  long long x = ((seed % M) * 2654435761LL + (k % M) + 1) % M;
-  x = ((x ^ (x >> 16)) * 1812433253LL) % M;
-  x = ((x ^ (x >> 13)) * 1664525LL)    % M;
-  x =  (x ^ (x >> 16)) % M;
-  return (double)x / (double)M;
-}
-
-/* MNIST を模した 2層 MLP の推論 (forward):
-   入力 784 → 隠れ 128 (ReLU) → 出力 10。
-   h = ReLU(W1 x + b1)  (128次元), o = W2 h + b2 (10次元), 予測 = argmax(o)。
-   ニューラルネットの推論の正体は「行列積 + 活性化関数」であり,
-   これまで並列化してきた行列(ベクトル)積がそのまま AI の推論になる。
-   重みは乱数 (学習済みパラメータの代わり) なので予測の中身に意味はないが,
-   計算の流れ (行列積 + ReLU + argmax) は本物である。 */
-
-#define IN  784   /* 入力次元 */
-#define HID 128   /* 隠れ層のニューロン数 */
-#define OUT 10    /* 出力クラス数 */
-
+/* 本物の MNIST 手書き数字を, 学習済みの2層MLPで認識する (推論=forward)。
+   - data/mnist_weights.txt : 学習済みの重み (784->128->10)
+   - data/mnist_test.txt    : テスト画像 (28x28=784画素, 0..255) と正解ラベル
+   推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」。これまで並列化してきた
+   行列計算が, そのまま手書き数字の認識になる。各画像の推論は独立なので並列化できる。 */
 int main(int argc, char ** argv) {
-  int B = (argc > 1 ? atoi(argv[1]) : 64);     /* バッチサイズ (画像枚数) */
-  int R = (argc > 2 ? atoi(argv[2]) : 2000);   /* 繰り返し回数 (計測を有意にするため) */
+  int IN, HID, OUT;
 
-  /* 重み・バイアスを乱数で生成 (小さい値 [-0.05, 0.05) 付近)。 */
+  /* --- 重みの読み込み --- */
+  FILE * fw = fopen("data/mnist_weights.txt", "r");
+  if (!fw) { printf("data/mnist_weights.txt が開けません\n"); return 1; }
+  if (fscanf(fw, "%d %d %d", &IN, &HID, &OUT) != 3) return 1;
   double * W1 = (double *)malloc(sizeof(double) * HID * IN);
   double * b1 = (double *)malloc(sizeof(double) * HID);
   double * W2 = (double *)malloc(sizeof(double) * OUT * HID);
   double * b2 = (double *)malloc(sizeof(double) * OUT);
-  for (long i = 0; i < (long)HID * IN; i++) W1[i] = (draw_rand01(i, 1) - 0.5) * 0.1;
-  for (long i = 0; i < HID; i++)            b1[i] = (draw_rand01(i, 2) - 0.5) * 0.1;
-  for (long i = 0; i < (long)OUT * HID; i++) W2[i] = (draw_rand01(i, 3) - 0.5) * 0.1;
-  for (long i = 0; i < OUT; i++)            b2[i] = (draw_rand01(i, 4) - 0.5) * 0.1;
+  for (long k = 0; k < (long)HID * IN; k++)  fscanf(fw, "%lf", &W1[k]);
+  for (int k = 0; k < HID; k++)              fscanf(fw, "%lf", &b1[k]);
+  for (long k = 0; k < (long)OUT * HID; k++) fscanf(fw, "%lf", &W2[k]);
+  for (int k = 0; k < OUT; k++)              fscanf(fw, "%lf", &b2[k]);
+  fclose(fw);
 
-  /* バッチの入力「画像」B 枚 (各 784 個の数値) を乱数で生成。 */
-  double * X = (double *)malloc(sizeof(double) * (long)B * IN);
-  for (long i = 0; i < (long)B * IN; i++) X[i] = draw_rand01(i, 5);
+  /* --- テスト画像の読み込み (画素 0..255 -> 0..1 に正規化) --- */
+  FILE * ft = fopen("data/mnist_test.txt", "r");
+  if (!ft) { printf("data/mnist_test.txt が開けません\n"); return 1; }
+  int NT, IN2;
+  if (fscanf(ft, "%d %d", &NT, &IN2) != 2) return 1;
+  double * X = (double *)malloc(sizeof(double) * (long)NT * IN);
+  int *    y = (int *)malloc(sizeof(int) * NT);
+  for (int i = 0; i < NT; i++) {
+    for (int k = 0; k < IN; k++) { int v; fscanf(ft, "%d", &v); X[(long)i*IN+k] = v / 255.0; }
+    fscanf(ft, "%d", &y[i]);
+  }
+  fclose(ft);
 
-  int * pred = (int *)malloc(sizeof(int) * B);
-  double checksum = 0.0;
-
+  /* --- 推論: 各画像を MLP に通して予測クラス(argmax)を求め, 正解数を数える --- */
+  long correct = 0;
   double t0 = omp_get_wtime();
-  for (int rep = 0; rep < R; rep++) {
-    checksum = 0.0;
-    /* 各画像の forward は互いに独立。バッチを分担して並列に推論する。 */
-    // BEGIN ANSWER: バッチ (画像) のループを #pragma omp parallel for reduction(+:checksum) で並列化せよ.
-#pragma omp parallel for reduction(+:checksum)
-    // END ANSWER
-    for (int n = 0; n < B; n++) {
-      const double * x = X + (long)n * IN;
-      double h[HID];
-      double o[OUT];
-      /* 1層目: h = ReLU(W1 x + b1)  (行列ベクトル積 + ReLU) */
-      for (int j = 0; j < HID; j++) {
-        double s = b1[j];
-        for (int k = 0; k < IN; k++) s += W1[(long)j * IN + k] * x[k];
-        h[j] = (s > 0.0 ? s : 0.0);   /* ReLU */
-      }
-      /* 2層目: o = W2 h + b2  (行列ベクトル積) */
-      for (int c = 0; c < OUT; c++) {
-        double s = b2[c];
-        for (int k = 0; k < HID; k++) s += W2[(long)c * HID + k] * h[k];
-        o[c] = s;
-        checksum += s;
-      }
-      /* 予測クラス = argmax(o) */
-      int amax = 0;
-      for (int c = 1; c < OUT; c++) if (o[c] > o[amax]) amax = c;
-      pred[n] = amax;
+  // BEGIN ANSWER: 各画像の推論は独立。#pragma omp parallel for reduction(+:correct) で並列化せよ.
+#pragma omp parallel for reduction(+:correct)
+  // END ANSWER
+  for (int i = 0; i < NT; i++) {
+    double h[1024];                       /* 隠れ層 (HID<=1024 を仮定) */
+    const double * x = &X[(long)i * IN];
+    for (int hh = 0; hh < HID; hh++) {    /* h = ReLU(W1 x + b1) */
+      double s = b1[hh];
+      const double * w = &W1[(long)hh * IN];
+      for (int k = 0; k < IN; k++) s += w[k] * x[k];
+      h[hh] = (s > 0.0) ? s : 0.0;
     }
+    int best = 0; double bestv = -1e300;  /* o = W2 h + b2, argmax */
+    for (int oo = 0; oo < OUT; oo++) {
+      double s = b2[oo];
+      const double * w = &W2[(long)oo * HID];
+      for (int hh = 0; hh < HID; hh++) s += w[hh] * h[hh];
+      if (s > bestv) { bestv = s; best = oo; }
+    }
+    if (best == y[i]) correct++;
   }
   double elapsed = omp_get_wtime() - t0;
 
-  int show = (B < 8 ? B : 8);
-  printf("batch=%d, hidden=%d: 予測クラス[0..%d]=", B, HID, show - 1);
-  for (int n = 0; n < show; n++) printf("%d%s", pred[n], n + 1 < show ? "," : "");
-  printf(", checksum=%.6f\n", checksum);
-  printf("(結果は OMP_NUM_THREADS によらず一致する: 各画像は固定順序で独立に計算)\n");
+  printf("MNIST テスト %d 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
+         NT, correct, 100.0 * correct / NT);
   printf("elapsed = %.3f sec\n", elapsed);
-  free(W1); free(b1); free(W2); free(b2); free(X); free(pred);
+  free(W1); free(b1); free(W2); free(b2); free(X); free(y);
   return 0;
 }

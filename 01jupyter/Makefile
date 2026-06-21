@@ -76,6 +76,13 @@ $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).$(lang) :  $(in_dir)/$(
 	./strip_answer.py $$< > $$@
 endef
 
+# 問題ディレクトリに data/ があれば (MNIST など) 出力側へまるごとコピーする
+define deploy_data
+$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/data
+$(out_dir)/$(nn_topic)/problems/$(nn_problem)/data : $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/data/*)
+	mkdir -p $$@ && cp -r $(in_dir)/$(nn_topic)/problems/$(nn_problem)/data/. $$@/
+endef
+
 EVAL=$(eval $(1))
 #EVAL=$(info $(1))
 
@@ -85,6 +92,7 @@ $(foreach nn_topic,$(nn_topics),\
     $(foreach nn_problem,$(call dir_in,$(in_dir)/$(nn_topic)/problems),\
       $(foreach problem,$(call problem_of,$(nn_problem)),\
         $(call EVAL,$(call deploy_problem)) \
+        $(if $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/data),$(call EVAL,$(call deploy_data))) \
         $(foreach lang,$(langs),\
 	  $(call EVAL,$(call deploy_code)) \
 )))))
