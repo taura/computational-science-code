@@ -261,6 +261,38 @@ contains
     net%W1 = net%W1 - sc*net%gW1; net%b1 = net%b1 - sc*net%gb1
     net%W2 = net%W2 - sc*net%gW2; net%b2 = net%b2 - sc*net%gb2
   end subroutine sgd_update
+
+  ! --- 訓練データ (画像と正解ラベル) を読み込む。画像は 0..1 に正規化し, X,y を確保して返す
+  !     (枚数 N は可変なので, まず形だけ見てから確保する) ---
+  subroutine load_dataset(xpath, ypath, X, y, N)
+    character(*), intent(in) :: xpath, ypath
+    real(8), allocatable, intent(out) :: X(:,:)
+    integer, allocatable, intent(out) :: y(:)
+    integer(8), intent(out) :: N
+    integer :: sh(2)
+    real(8), allocatable :: yd(:)
+    call read_npy(xpath, sh, 2)          ! dst 省略で形だけ
+    N = sh(1)
+    allocate(X(IN, N), y(N), yd(N))
+    call read_npy(xpath, sh, 2, X)       ! 列が1サンプル
+    X = X / 255.0d0
+    call read_npy(ypath, sh, 1, yd)
+    y = nint(yd)
+  end subroutine load_dataset
+
+  ! --- 全データの b0+1..b0+m の m 枚を net%X, net%y にコピーする ---
+  subroutine load_batch(net, Xall, yall, b0, m)
+    type(net_t), intent(inout) :: net
+    real(8), intent(in) :: Xall(:,:)
+    integer, intent(in) :: yall(:)
+    integer(8), intent(in) :: b0
+    integer, intent(in) :: m
+    integer :: i
+    do i = 1, m
+       net%X(:, i) = Xall(:, b0 + i)
+       net%y(i)    = yall(b0 + i)
+    end do
+  end subroutine load_batch
 end module mlp
 
 program mlp_train
@@ -269,10 +301,10 @@ program mlp_train
   implicit none
   type(net_t), save :: net          ! バッチ・中間行列も含み大きいので静的領域に置く
   character(len=32) :: arg
-  integer :: E, BS, ep, sh(2), i, m
+  integer :: E, BS, ep, m
   integer(8) :: N, b0, bl_correct, correct
   real(8) :: lr, loss, bl_loss, t0, elapsed
-  real(8), allocatable :: Xall(:,:), yd(:)
+  real(8), allocatable :: Xall(:,:)
   integer, allocatable :: yall(:)
 
   E = 20; lr = 0.1d0; BS = 100
@@ -281,14 +313,8 @@ program mlp_train
   if (command_argument_count() >= 3) then; call get_command_argument(3, arg); read(arg,*) BS; end if
   if (BS > MAX_BATCH) then; print "(a,i0,a)", "BS は ", MAX_BATCH, " 以下にしてください"; stop 1; end if
 
-  ! 訓練データ全体をヒープに読む。まず形だけ見て N を得てから確保する。
-  call read_npy("data/x_train.npy", sh, 2)          ! dst 省略で形だけ
-  N = sh(1)
-  allocate(Xall(IN, N), yd(N), yall(N))
-  call read_npy("data/x_train.npy", sh, 2, Xall)    ! 列が1サンプル
-  Xall = Xall / 255.0d0
-  call read_npy("data/y_train.npy", sh, 1, yd)
-  yall = nint(yd)
+  ! 訓練データ全体 (画像と正解ラベル) を読み込む
+  call load_dataset("data/x_train.npy", "data/y_train.npy", Xall, yall, N)
 
   ! パラメータ初期化 (He 初期化, バイアスは 0)
   call init_he(net%W1, 1_8); call init_he(net%W2, 2_8)
@@ -300,11 +326,7 @@ program mlp_train
      loss = 0.0d0; correct = 0
      do b0 = 0, N - 1, BS
         m = int(min(int(BS,8), N - b0))
-        ! 今のバッチを net%X, net%y にコピー
-        do i = 1, m
-           net%X(:, i) = Xall(:, b0 + i)
-           net%y(i)    = yall(b0 + i)
-        end do
+        call load_batch(net, Xall, yall, b0, m)      ! 今のバッチを net%X, net%y にコピー
         call forward(net, m, bl_loss, bl_correct)
         loss = loss + bl_loss; correct = correct + bl_correct
         call backward(net, m)

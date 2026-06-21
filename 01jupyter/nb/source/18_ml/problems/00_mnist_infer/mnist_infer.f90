@@ -3,28 +3,31 @@
 !   data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
 !   data/y_test.npy : 正解ラベル (int32 [N], 0..9)
 ! 推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
-! ネットワークの大きさは定数なので, 重み・テスト画像・ラベルを固定サイズ配列で
-! 派生型 net_t にまとめる。matvec は assumed-shape で任意サイズに1つで効く。
+! ネットワークの大きさは定数なので, 重み・画像・ラベル・中間結果を固定サイズ配列で
+! 派生型 net_t にまとめる。中間 h,o も画像ごとに net%h(:,i),net%o(:,i) として持つ
+! (スレッドが別々の列を書くので競合しない)。matvec は assumed-shape で任意サイズに対応。
 ! net_t は allocatable 成分を持たないので GPU 発展で map(to: net) がそのまま使える。
 
 module mlp
   implicit none
   integer, parameter :: IN = 784, HID = 128, OUT = 10
-  integer, parameter :: MAXN = 10000          ! テスト画像の最大枚数 (data はこれ以下)
+  integer, parameter :: MAXN = 10000          ! テスト画像の最大枚数 (超える分は読まない)
   type :: net_t
      real(8) :: W1(IN,HID), b1(HID), W2(HID,OUT), b2(OUT)   ! 学習済みの重み
-     real(8) :: x(IN,MAXN), y(MAXN)                         ! テスト画像(列が1枚)と正解ラベル
+     real(8) :: x(IN,MAXN), y(MAXN)                         ! テスト画像(列=1枚)とラベル
+     real(8) :: h(HID,MAXN), o(OUT,MAXN)                    ! 中間: 各画像の隠れ層・出力
   end type net_t
 contains
-  ! --- .npy を読み, 任意の数値型を double として dst に直接書き込む (C順) ---
-  ! 次元数 ndim は呼び出し側が指定し, ファイルの次元が違えばエラー。形を shp(1..ndim) に返す。
-  subroutine read_npy(path, dst, shp, ndim)
-    character(*), intent(in) :: path
-    real(8), intent(out) :: dst(*)            ! 呼び出し側の配列に直接書く (sequence association)
-    integer, intent(in)  :: ndim
-    integer, intent(out) :: shp(ndim)
+  ! --- .npy を読み, 任意の数値型を double として dst に直接書き込む (C順)。形を shp に返す。
+  !     dst を省略すると形だけ取得 (peek)。maxrows>=0 なら先頭 maxrows 行までしか読まない。 ---
+  subroutine read_npy(path, shp, ndim, dst, maxrows)
+    character(*), intent(in)  :: path
+    integer, intent(in)       :: ndim
+    integer, intent(out)      :: shp(ndim)
+    real(8), intent(out), optional :: dst(*)
+    integer, intent(in),  optional :: maxrows
     integer :: u, hlen, p1, p2, ios, s0, s1, file_ndim
-    integer(8) :: n, i
+    integer(8) :: n, i, rows
     character(len=10) :: magic
     character(len=:), allocatable :: hdr, sub
     character(len=8) :: descr
@@ -58,7 +61,10 @@ contains
     end if
     shp(1) = s0
     if (ndim == 2) shp(2) = s1
-    n = int(s0,8) * merge(int(s1,8), 1_8, ndim == 2)
+    if (.not. present(dst)) then; close(u); return; end if   ! 形だけ
+    rows = s0
+    if (present(maxrows)) then; if (maxrows >= 0 .and. s0 > maxrows) rows = maxrows; end if
+    n = rows * merge(int(s1,8), 1_8, ndim == 2)
 
     select case (trim(descr))
     case ('<f8'); read(u) dst(1:n)
@@ -71,25 +77,21 @@ contains
     close(u)
   end subroutine read_npy
 
-  ! --- read_npy + 形のチェックだけ。形が (n0,n1) と一致するか確認 (n1=0 なら1次元,
-  !     n0<0 なら行数は不問)。実際の行数を返す。 ---
-  function load_npy(path, dst, n0, n1) result(nrows)
+  ! --- read_npy + 形のチェックだけ。容量 cap 行までを dst に読み, 実際の行数を返す ---
+  function load_npy(path, dst, cap, n1) result(nrows)
     character(*), intent(in) :: path
     real(8), intent(out) :: dst(*)
-    integer, intent(in)  :: n0, n1
+    integer, intent(in)  :: cap, n1
     integer :: nrows, shp(2), ndim
     ndim = merge(2, 1, n1 > 0)
-    call read_npy(path, dst, shp(1:ndim), ndim)
-    if (n0 >= 0 .and. shp(1) /= n0) then
-       print "(a,a,i0,a,i0,a)", trim(path), ": 行数が想定 ", n0, " と違います (", shp(1), ")"; stop 1
-    end if
+    call read_npy(path, shp(1:ndim), ndim, dst, cap)
     if (n1 > 0 .and. shp(2) /= n1) then
        print "(a,a,i0,a,i0,a)", trim(path), ": 列数が想定 ", n1, " と違います (", shp(2), ")"; stop 1
     end if
-    nrows = shp(1)
+    nrows = min(shp(1), cap)
   end function load_npy
 
-  ! --- 行列ベクトル積 + バイアス: y = W x + b。W(n_in,n_out), assumed-shape で任意サイズに対応 ---
+  ! --- 行列ベクトル積 + バイアス: y = W x + b  (W(n_in,n_out), assumed-shape) ---
   subroutine matvec(W, b, x, y)
     real(8), intent(in)  :: W(:,:), b(:), x(:)
     real(8), intent(out) :: y(:)
@@ -104,14 +106,13 @@ contains
 
   ! --- i 番目の画像 (net%x(:,i)) を MLP に通して予測クラス(0..9)を返す ---
   function predict(net, i) result(cls)
-    type(net_t), intent(in) :: net
+    type(net_t), intent(inout) :: net
     integer, intent(in) :: i
     integer :: cls
-    real(8) :: h(HID), o(OUT)
-    call matvec(net%W1, net%b1, net%x(:,i), h)
-    h = max(0.0d0, h)
-    call matvec(net%W2, net%b2, h, o)
-    cls = maxloc(o, 1) - 1               ! argmax (クラスは 0 始まり)
+    call matvec(net%W1, net%b1, net%x(:,i), net%h(:,i))
+    net%h(:,i) = max(0.0d0, net%h(:,i))
+    call matvec(net%W2, net%b2, net%h(:,i), net%o(:,i))
+    cls = maxloc(net%o(:,i), 1) - 1               ! argmax (クラスは 0 始まり)
   end function predict
 end module mlp
 
@@ -119,17 +120,17 @@ program mnist_infer
   use mlp
   use omp_lib
   implicit none
-  type(net_t), save :: net          ! 画像も含み大きいので静的領域に置く (スタック回避)
+  type(net_t), save :: net          ! 画像・中間も含み大きいので静的領域に置く
   integer :: NT, i
 
-  ! 重み・テスト画像・ラベルを Net に直接読み込む
-  i = load_npy("data/W1.npy", net%W1, HID, IN)
-  i = load_npy("data/b1.npy", net%b1, HID, 0)
-  i = load_npy("data/W2.npy", net%W2, OUT, HID)
-  i = load_npy("data/b2.npy", net%b2, OUT, 0)
-  NT = load_npy("data/x_test.npy", net%x, -1, IN)        ! 枚数は不問
-  i  = load_npy("data/y_test.npy", net%y, NT, 0)
-  net%x(:, 1:NT) = net%x(:, 1:NT) / 255.0d0              ! 0..255 -> 0..1
+  ! 重み・テスト画像・ラベルを Net に直接読み込む (x,y は容量 MAXN)
+  i  = load_npy("data/W1.npy", net%W1, HID, IN)
+  i  = load_npy("data/b1.npy", net%b1, HID, 0)
+  i  = load_npy("data/W2.npy", net%W2, OUT, HID)
+  i  = load_npy("data/b2.npy", net%b2, OUT, 0)
+  NT = load_npy("data/x_test.npy", net%x, MAXN, IN)
+  i  = load_npy("data/y_test.npy", net%y, MAXN, 0)
+  net%x(:, 1:NT) = net%x(:, 1:NT) / 255.0d0     ! 0..255 -> 0..1
 
   block
     integer(8) :: correct

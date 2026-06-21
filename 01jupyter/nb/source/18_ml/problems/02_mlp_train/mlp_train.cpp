@@ -236,6 +236,34 @@ static void sgd_update(Net & net, int m, double lr) {
   for (int c = 0; c < OUT; c++)              net.b2[c] -= sc * net.gb2[c];
 }
 
+/* 配列をゼロで埋める */
+static void zero(double * v, long n) { for (long i = 0; i < n; i++) v[i] = 0.0; }
+
+/* 全データの b0..b0+m-1 の m 枚を net.X, net.y にコピーする */
+static void load_batch(Net & net, const double * Xall, const int * yall, long b0, int m) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < IN; j++) net.X[i][j] = Xall[(b0 + i) * IN + j];
+    net.y[i] = yall[b0 + i];
+  }
+}
+
+/* 訓練データ (画像と正解ラベル) を .npy から読み込む。画像は 0..1 に正規化し,
+   X, y を新たに確保して返し, 枚数 N を返す (枚数は可変なのでまず形を見てから確保)。 */
+static long load_dataset(const char * xpath, const char * ypath, double *& X, int *& y) {
+  long sh[2];
+  read_npy(xpath, nullptr, sh, 2);          /* dst=nullptr で形だけ取得 */
+  long N = sh[0];
+  X = new double[N * IN];
+  read_npy(xpath, X, sh, 2);
+  for (long i = 0; i < N * IN; i++) X[i] /= 255.0;
+  double * yd = new double[N];
+  read_npy(ypath, yd, sh, 1);
+  y = new int[N];
+  for (long i = 0; i < N; i++) y[i] = (int)yd[i];
+  delete[] yd;
+  return N;
+}
+
 /* ====================== main ====================== */
 static Net net;          /* バッチ・中間行列も含み大きいので静的領域に置く */
 
@@ -245,24 +273,14 @@ int main(int argc, char ** argv) {
   int    BS = (argc > 3 ? atoi(argv[3]) : 100);   /* ミニバッチサイズ */
   if (BS > MAX_BATCH) { printf("BS は %d 以下にしてください\n", MAX_BATCH); return 1; }
 
-  /* 訓練データ全体 (枚数 N は可変) をヒープに読む。まず形だけ見て N を得てから確保する。 */
-  long sh[2];
-  read_npy("data/x_train.npy", nullptr, sh, 2);   /* dst=nullptr で形だけ取得 */
-  long N = sh[0];
-  double * Xall = new double[N * IN];
-  read_npy("data/x_train.npy", Xall, sh, 2);
-  for (long i = 0; i < N * IN; i++) Xall[i] /= 255.0;  /* 0..255 -> 0..1 */
-  double * yd = new double[N];
-  read_npy("data/y_train.npy", yd, sh, 1);
-  int * yall = new int[N];
-  for (long i = 0; i < N; i++) yall[i] = (int)yd[i];
-  delete[] yd;
+  /* 訓練データ全体 (画像と正解ラベル) を読み込む */
+  double * Xall; int * yall;
+  long N = load_dataset("data/x_train.npy", "data/y_train.npy", Xall, yall);
 
   /* パラメータ初期化 (He 初期化, バイアスは 0) */
   init_he(&net.W1[0][0], (long)HID * IN, IN, 1);
   init_he(&net.W2[0][0], (long)OUT * HID, HID, 2);
-  for (int k = 0; k < HID; k++) net.b1[k] = 0.0;
-  for (int c = 0; c < OUT; c++) net.b2[c] = 0.0;
+  zero(net.b1, HID); zero(net.b2, OUT);
 
   double loss = 0.0; long correct = 0;
   double t0 = omp_get_wtime();
@@ -270,11 +288,7 @@ int main(int argc, char ** argv) {
     loss = 0.0; correct = 0;
     for (long b0 = 0; b0 < N; b0 += BS) {
       int m = (int)((b0 + BS < N) ? BS : N - b0);
-      /* 今のバッチを net.X, net.y にコピー */
-      for (int i = 0; i < m; i++) {
-        for (int j = 0; j < IN; j++) net.X[i][j] = Xall[(b0 + i) * IN + j];
-        net.y[i] = yall[b0 + i];
-      }
+      load_batch(net, Xall, yall, b0, m);          /* 今のバッチを net.X, net.y にコピー */
       LossCorrect r = forward(net, m);
       loss += r.loss; correct += r.correct;
       backward(net, m);
