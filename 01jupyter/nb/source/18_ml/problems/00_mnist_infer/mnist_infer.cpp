@@ -11,37 +11,15 @@
    推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
    各画像の推論は独立なので並列化できる。
 
-   2次元配列は Mat, 1次元配列は Vec で表す (中身は連続メモリで, .a が生バッファ)。
-   入力はNumPy標準の .npy 形式。I/O や行列演算は関数に分けてある (主眼は並列化)。 */
+   ネットワークの大きさは定数 (IN/HID/OUT) なので, 全パラメータを固定サイズ配列で
+   1つの構造体 Net にまとめる (ヒープ確保なし, 本物の2次元配列 W1[k][j])。Net は
+   内部にポインタを持たないので, GPU 発展では #pragma omp target map(to: net) で
+   モデルをまるごとデバイスへ送れる。 */
 
-/* ====================== 行列 (2次元) と ベクトル (1次元) ====================== */
-/* 連続メモリの row-major 行列: A(i,j) = a[i*cols + j] */
-struct Mat {
-  long rows, cols;
-  double * a;
-  Mat(long r, long c)             : rows(r), cols(c), a(new double[r * c]) {}
-  Mat(long r, long c, double * p) : rows(r), cols(c), a(p) {}   /* 既存バッファを引き取る */
-  Mat(Mat && o) noexcept : rows(o.rows), cols(o.cols), a(o.a) { o.a = nullptr; }
-  ~Mat() { delete[] a; }
-  Mat(const Mat &) = delete;                  /* コピー禁止 (二重 delete を防ぐ) */
-  Mat & operator=(const Mat &) = delete;
-  double & operator()(long i, long j)       { return a[i * cols + j]; }
-  double   operator()(long i, long j) const { return a[i * cols + j]; }
-  void zero() { for (long i = 0; i < rows * cols; i++) a[i] = 0.0; }
-};
+static const int IN = 784, HID = 128, OUT = 10;
 
-struct Vec {
-  long n;
-  double * a;
-  Vec(long n_)             : n(n_), a(new double[n_]) {}
-  Vec(long n_, double * p) : n(n_), a(p) {}                     /* 既存バッファを引き取る */
-  Vec(Vec && o) noexcept : n(o.n), a(o.a) { o.a = nullptr; }
-  ~Vec() { delete[] a; }
-  Vec(const Vec &) = delete;
-  Vec & operator=(const Vec &) = delete;
-  double & operator()(long i)       { return a[i]; }
-  double   operator()(long i) const { return a[i]; }
-  void zero() { for (long i = 0; i < n; i++) a[i] = 0.0; }
+struct Net {
+  double W1[HID][IN], b1[HID], W2[OUT][HID], b2[OUT];
 };
 
 /* ====================== .npy 入力 ====================== */
@@ -97,66 +75,67 @@ static double * read_npy(const char * path, long * shape, int ndim) {
   return out;
 }
 
-/* .npy を2次元の行列として読む (1次元のファイルはエラー) */
-static Mat read_npy_mat(const char * path) {
+/* .npy を固定サイズ配列 dst に読み込む (形が (n0,n1) と違えばエラー)。n1=0 なら1次元。 */
+static void load_npy(const char * path, double * dst, long n0, long n1) {
   long sh[2];
-  double * a = read_npy(path, sh, 2);
-  return Mat(sh[0], sh[1], a);
-}
-
-/* .npy を1次元のベクトルとして読む (2次元のファイルはエラー) */
-static Vec read_npy_vec(const char * path) {
-  long sh[1];
-  double * a = read_npy(path, sh, 1);
-  return Vec(sh[0], a);
-}
-
-/* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
-static Mat load_images(const char * path) {
-  Mat X = read_npy_mat(path);
-  for (long i = 0; i < X.rows * X.cols; i++) X.a[i] /= 255.0;
-  return X;
+  double * p = read_npy(path, sh, (n1 > 0 ? 2 : 1));
+  if (sh[0] != n0 || (n1 > 0 && sh[1] != n1)) {
+    printf("%s: 形が想定 (%ld,%ld) と違います\n", path, n0, n1); exit(1);
+  }
+  long n = n0 * (n1 > 0 ? n1 : 1);
+  for (long i = 0; i < n; i++) dst[i] = p[i];
+  delete[] p;
 }
 
 /* ====================== 行列演算 ====================== */
-/* 行列ベクトル積 + バイアス: y = W x + b  (W: rows×cols, x: cols, y: rows) */
-static void matvec(const Mat & W, const double * b, const double * x, double * y) {
-  for (long i = 0; i < W.rows; i++) {
+/* 行列ベクトル積 + バイアス: y = W x + b  (W は R×C, x は C, y と b は R)。
+   W のサイズ R,C は配列の型から自動で決まる (テンプレート)。 */
+template <int R, int C>
+static void matvec(const double (&W)[R][C], const double * x,
+                   const double (&b)[R], double (&y)[R]) {
+  for (int i = 0; i < R; i++) {
     double s = b[i];
-    for (long j = 0; j < W.cols; j++) s += W(i, j) * x[j];
+    for (int j = 0; j < C; j++) s += W[i][j] * x[j];
     y[i] = s;
   }
 }
 
-static void relu_inplace(double * v, long n) {
-  for (long i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
+static void relu_inplace(double * v, int n) {
+  for (int i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
 }
 
-static int argmax(const double * v, long n) {
+static int argmax(const double * v, int n) {
   int best = 0;
-  for (long i = 1; i < n; i++) if (v[i] > v[best]) best = (int)i;
+  for (int i = 1; i < n; i++) if (v[i] > v[best]) best = i;
   return best;
 }
 
-/* 1枚の画像を MLP に通して予測クラスを返す: h=ReLU(W1 x+b1), o=W2 h+b2, argmax(o) */
-static int predict(const Mat & W1, const Vec & b1,
-                   const Mat & W2, const Vec & b2, const double * x) {
-  double h[1024], o[64];               /* HID<=1024, OUT<=64 を仮定 */
-  matvec(W1, b1.a, x, h); relu_inplace(h, W1.rows);
-  matvec(W2, b2.a, h, o);
-  return argmax(o, W2.rows);
+/* 1枚の画像 x を MLP に通して予測クラスを返す: h=ReLU(W1 x+b1), o=W2 h+b2, argmax(o) */
+static int predict(const Net & net, const double * x) {
+  double h[HID], o[OUT];
+  matvec(net.W1, x, net.b1, h); relu_inplace(h, HID);
+  matvec(net.W2, h, net.b2, o);
+  return argmax(o, OUT);
 }
 
 /* ====================== main ====================== */
 int main(int argc, char ** argv) {
-  /* 学習済みの重みとテスト画像を読み込む */
-  Mat W1 = read_npy_mat("data/W1.npy");      /* [HID, IN]  */
-  Mat W2 = read_npy_mat("data/W2.npy");      /* [OUT, HID] */
-  Vec b1 = read_npy_vec("data/b1.npy");
-  Vec b2 = read_npy_vec("data/b2.npy");
-  Mat X  = load_images("data/x_test.npy");   /* [NT, IN], 0..1 正規化済み */
-  Vec y  = read_npy_vec("data/y_test.npy");
-  long NT = X.rows;
+  /* 学習済みの重みを固定サイズの Net に読み込む */
+  Net net;
+  load_npy("data/W1.npy", &net.W1[0][0], HID, IN);
+  load_npy("data/b1.npy", net.b1, HID, 0);
+  load_npy("data/W2.npy", &net.W2[0][0], OUT, HID);
+  load_npy("data/b2.npy", net.b2, OUT, 0);
+
+  /* テスト画像 (枚数 NT は可変なので動的配列) を読み, 画素を 0..1 に正規化 */
+  long sh[2];
+  double * X = read_npy("data/x_test.npy", sh, 2);   /* [NT, IN] */
+  int NT = sh[0];
+  for (long i = 0; i < (long)NT * IN; i++) X[i] /= 255.0;
+  double * yd = read_npy("data/y_test.npy", sh, 1);
+  int * y = new int[NT];
+  for (int i = 0; i < NT; i++) y[i] = (int)yd[i];
+  delete[] yd;
 
   /* 推論: 各画像の予測クラスと正解ラベルを比べ, 正解数を数える。各画像は独立。 */
   long correct = 0;
@@ -164,12 +143,13 @@ int main(int argc, char ** argv) {
   // BEGIN ANSWER
 #pragma omp parallel for reduction(+:correct)
   // END ANSWER
-  for (long i = 0; i < NT; i++)
-    if (predict(W1, b1, W2, b2, &X(i, 0)) == (int)y(i)) correct++;
+  for (int i = 0; i < NT; i++)
+    if (predict(net, &X[(long)i * IN]) == y[i]) correct++;
   double elapsed = omp_get_wtime() - t0;
 
-  printf("MNIST テスト %ld 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
+  printf("MNIST テスト %d 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
          NT, correct, 100.0 * correct / NT);
   printf("elapsed = %.3f sec\n", elapsed);
+  delete[] X; delete[] y;
   return 0;
 }

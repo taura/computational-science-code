@@ -3,17 +3,24 @@
 !   data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
 !   data/y_test.npy : 正解ラベル (int32 [N], 0..9)
 ! 推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
-! 各画像の推論は独立なので並列化できる。配列はネイティブの多次元配列で扱う。
-! 入力はNumPy標準の .npy 形式。I/O や行列演算は手続きに分けてある (主眼は並列化)。
+! ネットワークの大きさは定数 (IN/HID/OUT) なので, 全パラメータを固定サイズ配列で
+! 派生型 Net にまとめる。matvec は assumed-shape 配列で任意サイズに1つで効く。
+! Net は allocatable 成分を持たないので, GPU 発展で map(to: net) がそのまま使える。
 
 module mlp
+  implicit none
+  integer, parameter :: IN = 784, HID = 128, OUT = 10
+  type :: net_t
+     real(8) :: W1(IN,HID), b1(HID), W2(HID,OUT), b2(OUT)   ! W1(j,k)=W[k][j] (C順を転置格納)
+  end type net_t
 contains
-  ! --- .npy を読み, 中身を「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる ---
+  ! --- .npy を読み, 「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる ---
+  ! 次元数 ndim は呼び出し側が指定し, ファイルの次元が違えばエラー。shp に ndim 個の形を格納。
   subroutine read_npy(path, a, shp, ndim)
     character(*), intent(in) :: path
     real(8), allocatable, intent(out) :: a(:)
-    integer, intent(in)  :: ndim            ! 期待する次元数 (1 or 2)
-    integer, intent(out) :: shp(ndim)        ! 形 (ndim 個)
+    integer, intent(in)  :: ndim
+    integer, intent(out) :: shp(ndim)
     integer :: u, hlen, p1, p2, ios, s0, s1, file_ndim
     integer(8) :: n, i
     character(len=10) :: magic
@@ -63,7 +70,8 @@ contains
     close(u)
   end subroutine read_npy
 
-  ! --- 行列ベクトル積 + バイアス: y = W x + b  (W(n_in, n_out), x(n_in), y(n_out)) ---
+  ! --- 行列ベクトル積 + バイアス: y = W x + b。W(n_in, n_out) で y(k)=b(k)+Σ_j W(j,k)x(j)。
+  !     assumed-shape なのでサイズによらず1つで効く (C++ のテンプレートに相当)。 ---
   subroutine matvec(W, b, x, y)
     real(8), intent(in)  :: W(:,:), b(:), x(:)
     real(8), intent(out) :: y(:)
@@ -77,13 +85,14 @@ contains
   end subroutine matvec
 
   ! --- 1枚の画像を MLP に通して予測クラス(0..9)を返す ---
-  function predict(W1, b1, W2, b2, x) result(cls)
-    real(8), intent(in) :: W1(:,:), b1(:), W2(:,:), b2(:), x(:)
+  function predict(net, x) result(cls)
+    type(net_t), intent(in) :: net
+    real(8), intent(in) :: x(:)
     integer :: cls
-    real(8) :: h(size(W1,2)), o(size(W2,2))
-    call matvec(W1, b1, x, h)            ! h = W1 x + b1
+    real(8) :: h(HID), o(OUT)
+    call matvec(net%W1, net%b1, x, h)    ! h = W1 x + b1
     h = max(0.0d0, h)                    ! ReLU
-    call matvec(W2, b2, h, o)            ! o = W2 h + b2
+    call matvec(net%W2, net%b2, h, o)    ! o = W2 h + b2
     cls = maxloc(o, 1) - 1               ! argmax (クラスは 0 始まり)
   end function predict
 end module mlp
@@ -92,21 +101,20 @@ program mnist_infer
   use mlp
   use omp_lib
   implicit none
-  integer :: IN, HID, OUT, NT, i, sh1(1), sh2(2)
+  type(net_t) :: net
+  integer :: NT, i, sh1(1), sh2(2)
   integer(8) :: correct
   real(8) :: t0, elapsed
-  real(8), allocatable :: W1(:,:), b1(:), W2(:,:), b2(:), X(:,:), flat(:)
+  real(8), allocatable :: X(:,:), flat(:)
   integer, allocatable :: y(:)
 
-  ! 重みの読み込み (.npy は C順なので reshape で W(j,k)=W[k][j] の列優先並びになる)
-  call read_npy("data/W1.npy", flat, sh2, 2); HID = sh2(1); IN = sh2(2)
-  W1 = reshape(flat, [IN, HID])
-  call read_npy("data/b1.npy", flat, sh1, 1); b1 = flat
-  call read_npy("data/W2.npy", flat, sh2, 2); OUT = sh2(1)
-  W2 = reshape(flat, [HID, OUT])
-  call read_npy("data/b2.npy", flat, sh1, 1); b2 = flat
+  ! 重みを Net に読み込む (.npy は C順なので reshape で W(j,k)=W[k][j] の並びになる)
+  call read_npy("data/W1.npy", flat, sh2, 2); net%W1 = reshape(flat, [IN, HID])
+  call read_npy("data/b1.npy", flat, sh1, 1); net%b1 = flat
+  call read_npy("data/W2.npy", flat, sh2, 2); net%W2 = reshape(flat, [HID, OUT])
+  call read_npy("data/b2.npy", flat, sh1, 1); net%b2 = flat
 
-  ! テスト画像の読み込み (画素 0..255 -> 0..1), X(:,i) が画像 i
+  ! テスト画像 (枚数 NT は可変) を読み, 画素 0..255 -> 0..1。X(:,i) が画像 i
   call read_npy("data/x_test.npy", flat, sh2, 2); NT = sh2(1)
   X = reshape(flat, [IN, NT]) / 255.0d0
   call read_npy("data/y_test.npy", flat, sh1, 1)
@@ -119,7 +127,7 @@ program mnist_infer
   !$omp parallel do private(i) reduction(+:correct)
   ! END ANSWER
   do i = 1, NT
-     if (predict(W1, b1, W2, b2, X(:,i)) == y(i)) correct = correct + 1
+     if (predict(net, X(:,i)) == y(i)) correct = correct + 1
   end do
   ! BEGIN ANSWER
   !$omp end parallel do
