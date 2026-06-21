@@ -58,7 +58,8 @@ program boids
   t0 = omp_get_wtime()
   do t = 1, steps
      ! 各個体 i を, 近傍 j を見て更新する (全体で O(N^2))。
-     ! BEGIN ANSWER: 各個体 i のループを !$omp parallel do (i ごとに独立) で並列化せよ。
+     ! TODO: 各個体 i のループを並列化する (i ごとに独立)。
+     ! BEGIN ANSWER
      !$omp parallel do private(cx,cy,avx,avy,sx,sy,ax,ay,dx,dy,d2,nvx,nvy,s,cnt,j)
      ! END ANSWER
      do i = 1, N
@@ -87,7 +88,7 @@ program boids
         qx(i) = modulo(px(i) + nvx*dt, box)                ! 周期境界
         qy(i) = modulo(py(i) + nvy*dt, box)
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      ! 現在 <-> 次 を入れ替える

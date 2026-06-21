@@ -22,7 +22,8 @@ contains
     real(8) :: eps2, xi, yi, zi, ax, ay, az, dx, dy, dz, r2, inv, f
     integer :: i, j
     eps2 = eps * eps
-    ! BEGIN ANSWER: 各粒子 i のループを !$omp parallel do (i ごとに独立) で並列化せよ。
+    ! TODO: 各粒子 i のループを並列化する (i ごとに独立)。
+    ! BEGIN ANSWER
     !$omp parallel do private(xi,yi,zi,ax,ay,az,dx,dy,dz,r2,inv,f,j)
     ! END ANSWER
     do i = 1, N
@@ -37,7 +38,7 @@ contains
        end do
        acc(1,i) = ax; acc(2,i) = ay; acc(3,i) = az
     end do
-    ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+    ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
   end subroutine compute_acc
