@@ -1,0 +1,4 @@
+# テスト画像と学習済み重み (.npy) はリポジトリには入れず, 別途配布する。
+# テスト画像: 01jupyter で python3 ../prepare_data.py (要 ~/.keras/datasets/mnist.npz)
+# 重み:       02_mlp_train で学習を実行し, 生成された W1/b1/W2/b2.npy をここへコピー
+*.npy

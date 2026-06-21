@@ -1,41 +1,83 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <omp.h>
 
 /* 本物の MNIST 手書き数字を, 学習済みの2層MLPで認識する (推論=forward)。
-   - data/mnist_weights.txt : 学習済みの重み (784->128->10)
-   - data/mnist_test.txt    : テスト画像 (28x28=784画素, 0..255) と正解ラベル
+   重みは 02_mlp_train が学習して書き出したもの (784->128->10):
+   - data/W1.npy, b1.npy, W2.npy, b2.npy : 学習済みの重み (float64)
+   - data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
+   - data/y_test.npy : 正解ラベル (int32 [N], 0..9)
    推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」。これまで並列化してきた
-   行列計算が, そのまま手書き数字の認識になる。各画像の推論は独立なので並列化できる。 */
-int main(int argc, char ** argv) {
-  int IN, HID, OUT;
+   行列計算が, そのまま手書き数字の認識になる。各画像の推論は独立なので並列化できる。
 
-  /* --- 重みの読み込み --- */
-  FILE * fw = fopen("data/mnist_weights.txt", "r");
-  if (!fw) { printf("data/mnist_weights.txt が開けません\n"); return 1; }
-  if (fscanf(fw, "%d %d %d", &IN, &HID, &OUT) != 3) return 1;
-  double * W1 = (double *)malloc(sizeof(double) * HID * IN);
-  double * b1 = (double *)malloc(sizeof(double) * HID);
-  double * W2 = (double *)malloc(sizeof(double) * OUT * HID);
-  double * b2 = (double *)malloc(sizeof(double) * OUT);
-  for (long k = 0; k < (long)HID * IN; k++)  fscanf(fw, "%lf", &W1[k]);
-  for (int k = 0; k < HID; k++)              fscanf(fw, "%lf", &b1[k]);
-  for (long k = 0; k < (long)OUT * HID; k++) fscanf(fw, "%lf", &W2[k]);
-  for (int k = 0; k < OUT; k++)              fscanf(fw, "%lf", &b2[k]);
-  fclose(fw);
+   入力はNumPy標準の .npy 形式 (ヘッダ + 生バイナリ)。read_npy は下に用意してある
+   (I/O は本問題の主眼ではない)。 */
+
+/* ---- .npy 読み込み: 任意の数値型を double 配列に読み込む (C順, 1〜2次元) ---- */
+static double * read_npy(const char * path, long shape[2], int * ndim) {
+  FILE * f = fopen(path, "rb");
+  if (!f) { printf("%s が開けません\n", path); exit(1); }
+  unsigned char magic[10];
+  if (fread(magic, 1, 10, f) != 10 || memcmp(magic, "\x93NUMPY", 6) != 0) {
+    printf("%s は .npy ではありません\n", path); exit(1);
+  }
+  int hlen = magic[8] | (magic[9] << 8);           /* ヘッダ(辞書文字列)の長さ */
+  char * hdr = (char *)malloc(hlen + 1);
+  fread(hdr, 1, hlen, f); hdr[hlen] = '\0';
+  /* dtype (例: '<f8','|u1','<i4','<i8') と shape をヘッダ文字列から取り出す */
+  char descr[8] = {0};
+  { char * q = strstr(hdr, "descr"); q = strchr(q, ':'); q = strchr(q, '\'') + 1;
+    int i = 0; while (*q != '\'' && i < 7) descr[i++] = *q++; descr[i] = '\0'; }
+  long s0 = 1, s1 = 1; *ndim = 1;
+  char * sp = strstr(hdr, "shape"); sp = strchr(sp, '(') + 1;
+  s0 = atol(sp);
+  char * comma = strchr(sp, ',');
+  char * after = comma + 1; while (*after == ' ') after++;
+  if (*after != ')') { s1 = atol(after); *ndim = 2; } else { s1 = 1; *ndim = 1; }
+  shape[0] = s0; shape[1] = s1;
+  long n = s0 * (*ndim == 2 ? s1 : 1);
+  free(hdr);
+
+  double * out = (double *)malloc(sizeof(double) * n);
+  if (!strcmp(descr, "<f8")) {
+    fread(out, sizeof(double), n, f);
+  } else if (!strcmp(descr, "<f4")) {
+    float * t = (float *)malloc(sizeof(float) * n); fread(t, sizeof(float), n, f);
+    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+  } else if (!strcmp(descr, "|u1")) {
+    unsigned char * t = (unsigned char *)malloc(n); fread(t, 1, n, f);
+    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+  } else if (!strcmp(descr, "<i4")) {
+    int * t = (int *)malloc(sizeof(int) * n); fread(t, sizeof(int), n, f);
+    for (long i = 0; i < n; i++) out[i] = t[i]; free(t);
+  } else if (!strcmp(descr, "<i8")) {
+    long long * t = (long long *)malloc(sizeof(long long) * n); fread(t, sizeof(long long), n, f);
+    for (long i = 0; i < n; i++) out[i] = (double)t[i]; free(t);
+  } else {
+    printf("%s: 未対応の dtype %s\n", path, descr); exit(1);
+  }
+  fclose(f);
+  return out;
+}
+
+int main(int argc, char ** argv) {
+  long sh[2]; int nd;
+
+  /* --- 学習済みの重みの読み込み --- */
+  double * W1 = read_npy("data/W1.npy", sh, &nd); int HID = sh[0], IN = sh[1];
+  double * b1 = read_npy("data/b1.npy", sh, &nd);
+  double * W2 = read_npy("data/W2.npy", sh, &nd); int OUT = sh[0];
+  double * b2 = read_npy("data/b2.npy", sh, &nd);
 
   /* --- テスト画像の読み込み (画素 0..255 -> 0..1 に正規化) --- */
-  FILE * ft = fopen("data/mnist_test.txt", "r");
-  if (!ft) { printf("data/mnist_test.txt が開けません\n"); return 1; }
-  int NT, IN2;
-  if (fscanf(ft, "%d %d", &NT, &IN2) != 2) return 1;
+  double * Xu = read_npy("data/x_test.npy", sh, &nd); int NT = sh[0];
+  double * yd = read_npy("data/y_test.npy", sh, &nd);
   double * X = (double *)malloc(sizeof(double) * (long)NT * IN);
-  int *    y = (int *)malloc(sizeof(int) * NT);
-  for (int i = 0; i < NT; i++) {
-    for (int k = 0; k < IN; k++) { int v; fscanf(ft, "%d", &v); X[(long)i*IN+k] = v / 255.0; }
-    fscanf(ft, "%d", &y[i]);
-  }
-  fclose(ft);
+  int    * y = (int *)malloc(sizeof(int) * NT);
+  for (long i = 0; i < (long)NT * IN; i++) X[i] = Xu[i] / 255.0;
+  for (int i = 0; i < NT; i++)             y[i] = (int)yd[i];
+  free(Xu); free(yd);
 
   /* --- 推論: 各画像を MLP に通して予測クラス(argmax)を求め, 正解数を数える --- */
   long correct = 0;
