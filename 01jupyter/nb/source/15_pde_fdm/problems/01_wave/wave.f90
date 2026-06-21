@@ -36,7 +36,8 @@ program wave
   t0 = omp_get_wtime()
   do t = 1, steps
      ! 内部の各点を更新 (時間1ステップ進める)
-     ! BEGIN ANSWER: 内側の二重ループを !$omp parallel do collapse(2) private(lap) で並列化せよ.
+     ! TODO: この内側の二重ループ (各内部点の更新) を並列化する。
+     ! BEGIN ANSWER
      !$omp parallel do collapse(2) private(lap)
      ! END ANSWER
      do j = 1, L - 2
@@ -45,7 +46,7 @@ program wave
            nx(i,j) = 2.0d0 * cu(i,j) - up(i,j) + coef * lap
         end do
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      ! up <- cu <- nx と時間を1つ進める (ポインタを回す)

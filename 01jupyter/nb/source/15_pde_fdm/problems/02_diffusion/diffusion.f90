@@ -36,7 +36,8 @@ program diffusion
   t0 = omp_get_wtime()
   do t = 1, steps
      ! 全格子点を更新 (時間1ステップ進める)。端では添字を留めて反射境界にする。
-     ! BEGIN ANSWER: 更新の二重ループを !$omp parallel do collapse(2) で並列化せよ.
+     ! TODO: この更新の二重ループを並列化する。
+     ! BEGIN ANSWER
      !$omp parallel do collapse(2)
      ! END ANSWER
      do j = 0, L - 1
@@ -46,7 +47,7 @@ program diffusion
                 u(i, max(j-1,0))   + u(i, min(j+1,L-1)) - 4.0d0 * u(i,j) )
         end do
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      tmp => u; u => un; un => tmp

@@ -35,7 +35,8 @@ program heat2d
   do iter = 1, maxiter
      diff = 0.0d0   ! この反復での最大更新量
      ! 内部の各点 (i,j) を上下左右の平均で更新し, 更新量の最大値を求める。
-     ! BEGIN ANSWER: 内側の二重ループを !$omp parallel do collapse(2) private(v,d) reduction(max:diff) で並列化せよ.
+     ! TODO: この内側の二重ループ (各内部点の更新) を並列化する。
+     ! BEGIN ANSWER
      !$omp parallel do collapse(2) private(v, d) reduction(max:diff)
      ! END ANSWER
      do j = 1, L - 2
@@ -46,7 +47,7 @@ program heat2d
            unew(i,j) = v
         end do
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      ! u と unew を入れ替える (コピーせずポインタを差し替えるだけ)
