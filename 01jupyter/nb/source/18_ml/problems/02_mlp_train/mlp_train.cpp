@@ -52,8 +52,9 @@ struct Vec {
 };
 
 /* ====================== .npy 入出力 ====================== */
-/* .npy を読み, 任意の数値型を double 配列に読み込む (C順, 1〜2次元) */
-static double * read_npy(const char * path, long shape[2], int * ndim) {
+/* .npy を読み, 任意の数値型を double 配列に読み込む (C順)。次元数 ndim は呼び出し側が
+   指定し, ファイルの次元がそれと違えばエラーにする。shape には ndim 個の要素を格納する。 */
+static double * read_npy(const char * path, long * shape, int ndim) {
   FILE * f = fopen(path, "rb");
   if (!f) { printf("%s が開けません\n", path); exit(1); }
   unsigned char magic[10];
@@ -67,14 +68,18 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   char descr[8] = {0};
   { char * q = strstr(hdr, "descr"); q = strchr(q, ':'); q = strchr(q, '\'') + 1;
     int i = 0; while (*q != '\'' && i < 7) descr[i++] = *q++; descr[i] = '\0'; }
-  long s0 = 1, s1 = 1; *ndim = 1;
+  long s0 = 1, s1 = 1; int file_ndim;
   char * sp = strstr(hdr, "shape"); sp = strchr(sp, '(') + 1;
   s0 = atol(sp);
   char * comma = strchr(sp, ',');
   char * after = comma + 1; while (*after == ' ') after++;
-  if (*after != ')') { s1 = atol(after); *ndim = 2; } else { s1 = 1; *ndim = 1; }
-  shape[0] = s0; shape[1] = s1;
-  long n = s0 * (*ndim == 2 ? s1 : 1);
+  if (*after != ')') { s1 = atol(after); file_ndim = 2; } else { file_ndim = 1; }
+  if (file_ndim != ndim) {
+    printf("%s: %d 次元を期待しましたが %d 次元でした\n", path, ndim, file_ndim); exit(1);
+  }
+  shape[0] = s0;
+  long n = s0;
+  if (ndim == 2) { shape[1] = s1; n *= s1; }
   delete[] hdr;
 
   double * out = new double[n];
@@ -99,18 +104,18 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   return out;
 }
 
-/* .npy を行列として読む (1次元なら cols=1) */
+/* .npy を2次元の行列として読む (1次元のファイルはエラー) */
 static Mat read_npy_mat(const char * path) {
-  long sh[2]; int nd;
-  double * a = read_npy(path, sh, &nd);
-  return Mat(sh[0], (nd == 2 ? sh[1] : 1), a);
+  long sh[2];
+  double * a = read_npy(path, sh, 2);
+  return Mat(sh[0], sh[1], a);
 }
 
-/* .npy をベクトルとして読む */
+/* .npy を1次元のベクトルとして読む (2次元のファイルはエラー) */
 static Vec read_npy_vec(const char * path) {
-  long sh[2]; int nd;
-  double * a = read_npy(path, sh, &nd);
-  return Vec(sh[0] * (nd == 2 ? sh[1] : 1), a);
+  long sh[1];
+  double * a = read_npy(path, sh, 1);
+  return Vec(sh[0], a);
 }
 
 /* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
