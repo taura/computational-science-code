@@ -282,7 +282,8 @@ int main(int argc, char ** argv) {
 
       /* バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
          損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。 */
-      // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2a[:gb2.n],gW2a[:gW2.rows*gW2.cols],gb1a[:gb1.n],gW1a[:gW1.rows*gW1.cols]).
+      // TODO: このバッチ内のループを並列化する (各サンプルは独立)。
+      // BEGIN ANSWER
 #pragma omp parallel for \
         reduction(+:loss,correct,gb2a[:gb2.n],gW2a[:gW2.rows*gW2.cols],gb1a[:gb1.n],gW1a[:gW1.rows*gW1.cols])
       // END ANSWER

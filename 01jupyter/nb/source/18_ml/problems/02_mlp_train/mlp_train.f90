@@ -221,7 +221,8 @@ program mlp_train
 
         ! バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
         ! 損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。
-        ! BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: !$omp parallel do private(...) reduction(+:loss,correct,gb2,gW2,gb1,gW1)。
+        ! TODO: このバッチ内のループを並列化する (各サンプルは独立)。
+        ! BEGIN ANSWER
         !$omp parallel do private(i,sloss,scorr) &
         !$omp   reduction(+:loss,correct,gb2,gW2,gb1,gW1)
         ! END ANSWER
@@ -230,7 +231,7 @@ program mlp_train
                                  gW1, gb1, gW2, gb2, sloss, scorr)
            loss = loss + sloss; correct = correct + scorr
         end do
-        ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+        ! BEGIN ANSWER
         !$omp end parallel do
         ! END ANSWER
 

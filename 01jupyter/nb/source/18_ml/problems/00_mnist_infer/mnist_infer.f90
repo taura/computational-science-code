@@ -108,13 +108,13 @@ program mnist_infer
   ! 推論: 各画像の予測クラスと正解を比べ正解数を数える。各画像は独立。
   correct = 0
   t0 = omp_get_wtime()
-  ! BEGIN ANSWER: 各画像の推論は独立。!$omp parallel do reduction(+:correct) で並列化せよ.
+  ! BEGIN ANSWER
   !$omp parallel do private(i) reduction(+:correct)
   ! END ANSWER
   do i = 1, NT
      if (predict(W1, b1, W2, b2, X(:,i)) == y(i)) correct = correct + 1
   end do
-  ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do).
+  ! BEGIN ANSWER
   !$omp end parallel do
   ! END ANSWER
   elapsed = omp_get_wtime() - t0

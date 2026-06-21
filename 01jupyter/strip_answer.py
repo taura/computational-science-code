@@ -2,25 +2,32 @@
 """
 解答ファイルから解答部分を取り除き, 学生向けの穴あきコードを生成する.
 
-解答ファイル中で, 解答にあたる行を行コメント形式のマーカーで囲んでおく:
+解答ファイル中で, 解答にあたる行を行コメント形式のマーカーで囲んでおく.
+ヒントは別行の通常コメント (// TODO: ... など) で与え, マーカー自身は
+学生向けコードから消す (BEGIN/END の行も解答行も出力しない):
 
   C/C++:
-    // BEGIN ANSWER: <TODO として表示するヒント文>
-    double m = (a + b) / 2.0;
+    // TODO: ここを並列化する          ← 通常コメント. そのまま残る
+    // BEGIN ANSWER
+    #pragma omp parallel for
     // END ANSWER
 
   Fortran:
-    ! BEGIN ANSWER: <TODO として表示するヒント文>
-    m = (a + b) / 2.0d0
+    ! TODO: ここを並列化する
+    ! BEGIN ANSWER
+    !$omp parallel do
     ! END ANSWER
 
 マーカーはコメントなので, 解答ファイルはそのままコンパイルできる.
-このスクリプトは BEGIN ANSWER 〜 END ANSWER の範囲を,
+このスクリプトは BEGIN ANSWER 〜 END ANSWER の範囲 (マーカー行を含む) を
+出力から取り除く. ヒントは上のように別の通常コメント行で書けばよい.
+
+後方互換: 古い形式 `BEGIN ANSWER: <ヒント文>` のようにマーカー行にヒントを
+書いた場合は, その範囲を
 
     <BEGIN 行のインデント><コメント記号> TODO: <ヒント文>
 
-の 1 行に置き換えて標準出力に書き出す. ヒント文 (": " 以降) が無ければ
-"TODO: ここを実装せよ" を用いる.
+の 1 行に置き換える (従来動作).
 
 使い方:
     ./strip_answer.py 解答ファイル > 穴あきファイル
@@ -41,10 +48,13 @@ def strip(lines):
         if not m:
             out.append(line)
             continue
-        # 解答ブロックの開始. END ANSWER まで読み飛ばし TODO に置き換える.
-        hint = m.group("hint") or "ここを実装せよ"
-        out.append("{indent}{comment} TODO: {hint}\n".format(
-            indent=m.group("indent"), comment=m.group("comment"), hint=hint))
+        # 解答ブロックの開始. END ANSWER まで読み飛ばして取り除く.
+        # マーカー行にヒントが書かれていれば (古い形式) TODO 行に置き換える.
+        # bare な BEGIN ANSWER (ヒント無し) なら何も出力しない.
+        hint = m.group("hint")
+        if hint:
+            out.append("{indent}{comment} TODO: {hint}\n".format(
+                indent=m.group("indent"), comment=m.group("comment"), hint=hint))
         for inner in it:
             if END.match(inner):
                 break

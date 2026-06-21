@@ -156,7 +156,7 @@ int main(int argc, char ** argv) {
   /* 推論: 各画像の予測クラスと正解ラベルを比べ, 正解数を数える。各画像は独立。 */
   long correct = 0;
   double t0 = omp_get_wtime();
-  // BEGIN ANSWER: 各画像の推論は独立。#pragma omp parallel for reduction(+:correct) で並列化せよ.
+  // BEGIN ANSWER
 #pragma omp parallel for reduction(+:correct)
   // END ANSWER
   for (long i = 0; i < NT; i++)
