@@ -15,45 +15,48 @@ contains
 
   ! 行列ベクトル積 y = A p。A は n×n 格子の 2次元ラプラシアン (5点ステンシル,
   ! ディリクレ境界=0) で対称正定値。行列を保持せずステンシルで計算する (行列フリー)。
-  ! これは B1 (2D熱伝導) と同じラプラシアン行列。添字は 0..n*n-1 (idx = i*n + j)。
-  subroutine matvec(n, p, y)
-    integer, intent(in) :: n
-    real(8), intent(in) :: p(0:n*n-1)
-    real(8), intent(out) :: y(0:n*n-1)
-    integer :: i, j
+  ! ベクトルは n×n のネイティブ2次元配列で表す。
+  subroutine matvec(p, y)
+    real(8), intent(in)  :: p(:,:)
+    real(8), intent(out) :: y(:,:)
+    integer :: i, j, n
     real(8) :: v
-    ! BEGIN ANSWER: 格子点の二重ループを !$omp parallel do collapse(2) private(v) で並列化せよ.
+    n = size(p, 1)
+    ! TODO: 格子点の二重ループを並列化する。
+    ! BEGIN ANSWER
     !$omp parallel do collapse(2) private(v)
     ! END ANSWER
-    do i = 0, n - 1
-       do j = 0, n - 1
-          v = 4.0d0 * p(i*n+j)
-          if (i > 0)     v = v - p((i-1)*n+j)
-          if (i < n - 1) v = v - p((i+1)*n+j)
-          if (j > 0)     v = v - p(i*n+j-1)
-          if (j < n - 1) v = v - p(i*n+j+1)
-          y(i*n+j) = v
+    do j = 1, n
+       do i = 1, n
+          v = 4.0d0 * p(i,j)
+          if (i > 1) v = v - p(i-1,j)
+          if (i < n) v = v - p(i+1,j)
+          if (j > 1) v = v - p(i,j-1)
+          if (j < n) v = v - p(i,j+1)
+          y(i,j) = v
        end do
     end do
-    ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+    ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
   end subroutine matvec
 
-  ! 内積 a・b
-  function dot(N, a, b) result(s)
-    integer(8), intent(in) :: N
-    real(8), intent(in) :: a(0:N-1), b(0:N-1)
+  ! 内積 a・b (ベクトルとみなして全要素の積和)
+  function dot(a, b) result(s)
+    real(8), intent(in) :: a(:,:), b(:,:)
     real(8) :: s
-    integer(8) :: k
+    integer :: i, j
     s = 0.0d0
-    ! BEGIN ANSWER: 内積の和を !$omp parallel do reduction(+:s) で並列化せよ.
-    !$omp parallel do reduction(+:s)
+    ! TODO: 内積の和を並列化する (reduction)。
+    ! BEGIN ANSWER
+    !$omp parallel do collapse(2) reduction(+:s)
     ! END ANSWER
-    do k = 0, N - 1
-       s = s + a(k) * b(k)
+    do j = 1, size(a, 2)
+       do i = 1, size(a, 1)
+          s = s + a(i,j) * b(i,j)
+       end do
     end do
-    ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+    ! BEGIN ANSWER
     !$omp end parallel do
     ! END ANSWER
   end function dot
@@ -63,10 +66,9 @@ program cg
   use cg_mod
   use omp_lib
   character(len=32) :: arg
-  integer :: n, maxit, it
-  real(8) :: tol, rs, rs_new, alpha, beta, err, e, t0, elapsed
-  integer(8) :: N8, k
-  real(8), allocatable :: xt(:), b(:), x(:), r(:), p(:), Ap(:)
+  integer :: n, maxit, it, i, j
+  real(8) :: tol, rs, rs_new, alpha, beta, err, t0, elapsed
+  real(8), allocatable :: xt(:,:), b(:,:), x(:,:), r(:,:), p(:,:), Ap(:,:)
   n = 128; tol = 1d-8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
@@ -74,47 +76,39 @@ program cg
   if (command_argument_count() >= 2) then
      call get_command_argument(2, arg); read (arg, *) tol
   end if
-  N8 = int(n, 8) * n
   maxit = 10 * n
 
-  allocate(xt(0:N8-1), b(0:N8-1), x(0:N8-1), r(0:N8-1), p(0:N8-1), Ap(0:N8-1))
-  do k = 0, N8 - 1
-     xt(k) = draw_rand01(k, 0_8)        ! 真の解をランダムに決め
+  allocate(xt(n,n), b(n,n), x(n,n), r(n,n), p(n,n), Ap(n,n))
+  do i = 1, n
+     do j = 1, n
+        xt(i,j) = draw_rand01(int((i-1)*n + (j-1), 8), 0_8)   ! 真の解をランダムに決め
+     end do
   end do
-  call matvec(n, xt, b)                 ! b = A xt を作る
+  call matvec(xt, b)                    ! b = A xt を作る
 
   ! CG: x=0 から始めて A x = b を解く
-  do k = 0, N8 - 1
-     x(k) = 0.0d0; r(k) = b(k); p(k) = b(k)
-  end do
-  rs = dot(N8, r, r)
+  x = 0.0d0; r = b; p = b
+  rs = dot(r, r)
 
   t0 = omp_get_wtime()
   do it = 1, maxit
-     call matvec(n, p, Ap)
-     alpha = rs / dot(N8, p, Ap)
-     do k = 0, N8 - 1
-        x(k) = x(k) + alpha * p(k); r(k) = r(k) - alpha * Ap(k)   ! (発展: ここも並列化可)
-     end do
-     rs_new = dot(N8, r, r)
+     call matvec(p, Ap)
+     alpha = rs / dot(p, Ap)
+     x = x + alpha * p; r = r - alpha * Ap     ! (発展: ここも並列化可)
+     rs_new = dot(r, r)
      if (sqrt(rs_new) < tol) then
         rs = rs_new; exit
      end if
      beta = rs_new / rs
-     do k = 0, N8 - 1
-        p(k) = r(k) + beta * p(k)
-     end do
+     p = r + beta * p
      rs = rs_new
   end do
   elapsed = omp_get_wtime() - t0
 
   ! 検算: 求めた x が真の解 xt にどれだけ近いか
-  err = 0.0d0
-  do k = 0, N8 - 1
-     e = abs(x(k) - xt(k)); if (e > err) err = e
-  end do
+  err = maxval(abs(x - xt))
   print "(a,i0,a,i0,a,i0,a,es9.2,a,es9.2)", &
-       "n=", n, " (N=", N8, "), iters=", min(it, maxit), &
+       "n=", n, " (N=", n*n, "), iters=", min(it, maxit), &
        ", 残差=", sqrt(rs), ", 解の誤差(max|x-xt|)=", err
   print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 end program cg

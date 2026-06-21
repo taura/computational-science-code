@@ -69,7 +69,8 @@ program markov
   ! べき乗法: 遷移行列を繰り返し掛けると定常分布に収束する (最大固有値 = 1)。
   t0 = omp_get_wtime()
   do it = 1, maxit
-     ! BEGIN ANSWER: 行 t ごとの行列ベクトル積を !$omp parallel do で並列化せよ (各 t は独立).
+     ! TODO: 行 t ごとの行列ベクトル積を並列化する (各 t は独立)。
+     ! BEGIN ANSWER
      !$omp parallel do private(s_, sm)
      ! END ANSWER
      do t = 0, S - 1
@@ -79,17 +80,18 @@ program markov
         end do
         pin(t) = sm
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      total = 0.0d0
-     ! BEGIN ANSWER: 総和を !$omp parallel do reduction(+:total) で並列化せよ.
+     ! TODO: 総和を並列化する (reduction)。
+     ! BEGIN ANSWER
      !$omp parallel do reduction(+:total)
      ! END ANSWER
      do t = 0, S - 1
         total = total + pin(t)
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      diff = 0.0d0
