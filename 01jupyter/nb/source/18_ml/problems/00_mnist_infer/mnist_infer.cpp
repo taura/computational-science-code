@@ -8,18 +8,20 @@
    - data/W1.npy, b1.npy, W2.npy, b2.npy : 学習済みの重み (float64)
    - data/x_test.npy : テスト画像 (uint8 [N,784], 画素 0..255)
    - data/y_test.npy : 正解ラベル (int32 [N], 0..9)
-   推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」。これまで並列化してきた
-   行列計算が, そのまま手書き数字の認識になる。各画像の推論は独立なので並列化できる。
+   推論の中身は「行列ベクトル積 + 活性化(ReLU) + argmax」(下の matvec / predict)。
+   各画像の推論は独立なので並列化できる。
 
-   2次元配列は下の Mat クラスで表す (A(i,j) でアクセス, 中身は連続メモリ)。
-   入力はNumPy標準の .npy 形式。read_npy も下に用意してある (I/O は主眼ではない)。 */
+   2次元配列は Mat クラスで表す (A(i,j) でアクセス, 中身は連続メモリ)。
+   入力はNumPy標準の .npy 形式。I/O や行列演算は関数に分けてある (主眼は並列化)。 */
 
-/* ---- 連続メモリの2次元配列 (row-major: A(i,j) = a[i*cols + j]) ---- */
+/* ====================== 2次元配列 (行列) ====================== */
+/* 連続メモリの row-major 行列: A(i,j) = a[i*cols + j] */
 struct Mat {
   long rows, cols;
   double * a;
   Mat(long r, long c)             : rows(r), cols(c), a(new double[r * c]) {}
   Mat(long r, long c, double * p) : rows(r), cols(c), a(p) {}   /* 既存バッファを引き取る */
+  Mat(Mat && o) noexcept : rows(o.rows), cols(o.cols), a(o.a) { o.a = nullptr; }
   ~Mat() { delete[] a; }
   Mat(const Mat &) = delete;                  /* コピー禁止 (二重 delete を防ぐ) */
   Mat & operator=(const Mat &) = delete;
@@ -28,7 +30,8 @@ struct Mat {
   double * data() { return a; }
 };
 
-/* ---- .npy 読み込み: 任意の数値型を double 配列に読み込む (C順, 1〜2次元) ---- */
+/* ====================== .npy 入力 ====================== */
+/* .npy を読み, 任意の数値型を double 配列に読み込む (C順, 1〜2次元) */
 static double * read_npy(const char * path, long shape[2], int * ndim) {
   FILE * f = fopen(path, "rb");
   if (!f) { printf("%s が開けません\n", path); exit(1); }
@@ -75,53 +78,79 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   return out;
 }
 
-int main(int argc, char ** argv) {
+/* .npy を2次元の行列として読む (1次元なら cols=1) */
+static Mat read_npy_mat(const char * path) {
   long sh[2]; int nd;
+  double * a = read_npy(path, sh, &nd);
+  return Mat(sh[0], (nd == 2 ? sh[1] : 1), a);
+}
 
-  /* --- 学習済みの重みの読み込み (2次元は Mat, 1次元は double[] ) --- */
-  long shw[2];
-  double * w1 = read_npy("data/W1.npy", shw, &nd); int HID = shw[0], IN = shw[1];
-  Mat W1(HID, IN, w1);
-  double * b1 = read_npy("data/b1.npy", sh, &nd);
-  double * w2 = read_npy("data/W2.npy", shw, &nd); int OUT = shw[0];
-  Mat W2(OUT, HID, w2);
-  double * b2 = read_npy("data/b2.npy", sh, &nd);
+/* .npy を1次元のベクトルとして読む */
+static double * read_npy_vec(const char * path) {
+  long sh[2]; int nd;
+  return read_npy(path, sh, &nd);
+}
 
-  /* --- テスト画像の読み込み (画素 0..255 -> 0..1 に正規化) --- */
-  double * xr = read_npy("data/x_test.npy", sh, &nd); int NT = sh[0];
-  for (long i = 0; i < (long)NT * IN; i++) xr[i] /= 255.0;
-  Mat X(NT, IN, xr);
-  double * yd = read_npy("data/y_test.npy", sh, &nd);
-  int * y = new int[NT];
-  for (int i = 0; i < NT; i++) y[i] = (int)yd[i];
-  delete[] yd;
+/* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
+static Mat load_images(const char * path) {
+  Mat X = read_npy_mat(path);
+  for (long i = 0; i < X.rows * X.cols; i++) X.data()[i] /= 255.0;
+  return X;
+}
 
-  /* --- 推論: 各画像を MLP に通して予測クラス(argmax)を求め, 正解数を数える --- */
+/* ====================== 行列演算 ====================== */
+/* 行列ベクトル積 + バイアス: y = W x + b  (W: rows×cols, x: cols, y: rows) */
+static void matvec(const Mat & W, const double * b, const double * x, double * y) {
+  for (long i = 0; i < W.rows; i++) {
+    double s = b[i];
+    for (long j = 0; j < W.cols; j++) s += W(i, j) * x[j];
+    y[i] = s;
+  }
+}
+
+static void relu_inplace(double * v, long n) {
+  for (long i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
+}
+
+static int argmax(const double * v, long n) {
+  int best = 0;
+  for (long i = 1; i < n; i++) if (v[i] > v[best]) best = (int)i;
+  return best;
+}
+
+/* 1枚の画像を MLP に通して予測クラスを返す: h=ReLU(W1 x+b1), o=W2 h+b2, argmax(o) */
+static int predict(const Mat & W1, const double * b1,
+                   const Mat & W2, const double * b2, const double * x) {
+  double h[1024], o[64];               /* HID<=1024, OUT<=64 を仮定 */
+  matvec(W1, b1, x, h); relu_inplace(h, W1.rows);
+  matvec(W2, b2, h, o);
+  return argmax(o, W2.rows);
+}
+
+/* ====================== main ====================== */
+int main(int argc, char ** argv) {
+  /* 学習済みの重みとテスト画像を読み込む */
+  Mat W1 = read_npy_mat("data/W1.npy");      /* [HID, IN]  */
+  Mat W2 = read_npy_mat("data/W2.npy");      /* [OUT, HID] */
+  double * b1 = read_npy_vec("data/b1.npy");
+  double * b2 = read_npy_vec("data/b2.npy");
+  Mat X = load_images("data/x_test.npy");    /* [NT, IN], 0..1 正規化済み */
+  double * y = read_npy_vec("data/y_test.npy");
+  long NT = X.rows;
+
+  /* 推論: 各画像の予測クラスと正解ラベルを比べ, 正解数を数える。各画像は独立。 */
   long correct = 0;
   double t0 = omp_get_wtime();
   // BEGIN ANSWER: 各画像の推論は独立。#pragma omp parallel for reduction(+:correct) で並列化せよ.
 #pragma omp parallel for reduction(+:correct)
   // END ANSWER
-  for (int i = 0; i < NT; i++) {
-    double h[1024];                       /* 隠れ層 (HID<=1024 を仮定) */
-    for (int hh = 0; hh < HID; hh++) {    /* h = ReLU(W1 x + b1) */
-      double s = b1[hh];
-      for (int k = 0; k < IN; k++) s += W1(hh, k) * X(i, k);
-      h[hh] = (s > 0.0) ? s : 0.0;
-    }
-    int best = 0; double bestv = -1e300;  /* o = W2 h + b2, argmax */
-    for (int oo = 0; oo < OUT; oo++) {
-      double s = b2[oo];
-      for (int hh = 0; hh < HID; hh++) s += W2(oo, hh) * h[hh];
-      if (s > bestv) { bestv = s; best = oo; }
-    }
-    if (best == y[i]) correct++;
-  }
+  for (long i = 0; i < NT; i++)
+    if (predict(W1, b1, W2, b2, &X(i, 0)) == (int)y[i]) correct++;
   double elapsed = omp_get_wtime() - t0;
 
-  printf("MNIST テスト %d 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
+  printf("MNIST テスト %ld 枚: 正解 %ld 枚, 正解率 = %.2f%%\n",
          NT, correct, 100.0 * correct / NT);
   printf("elapsed = %.3f sec\n", elapsed);
-  delete[] b1; delete[] b2; delete[] y;     /* W1,W2,X は Mat のデストラクタが解放 */
+  delete[] b1; delete[] b2; delete[] y;       /* W1,W2,X は Mat のデストラクタが解放 */
   return 0;
 }

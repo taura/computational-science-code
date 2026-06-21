@@ -15,19 +15,19 @@
    更新:     ミニバッチ内の勾配を総和し, W -= lr * grad/batch。
    並列化対象は「ミニバッチ内の全サンプルにわたる勾配の和」(配列 reduction)。
 
-   重み・画像は2次元配列 Mat (A(i,j) でアクセス)。ただし配列 reduction の対象 (勾配)
-   は OpenMP の配列セクション構文に合わせて生のポインタ (gW1[...]) で扱う。
-   入出力はNumPy標準の .npy 形式:
-   - 読み: data/x_train.npy (uint8 [N,784]), data/y_train.npy (int32 [N])
-   - 書き: data/W1.npy, b1.npy, W2.npy, b2.npy (float64) -> 00_mnist_infer が読む
-   read_npy / write_npy は下に用意してある (I/O は本問題の主眼ではない)。 */
+   1サンプルの forward+backprop は forward_backward() に, 重み更新は sgd_update() に
+   まとめてある。重み・画像は Mat クラス。ただし配列 reduction の対象 (勾配) は
+   OpenMP の配列セクション構文に合わせて生のポインタ (gW1[...]) で扱う。
+   入出力はNumPy標準の .npy 形式 (read_npy / write_npy を用意)。 */
 
-/* ---- 連続メモリの2次元配列 (row-major: A(i,j) = a[i*cols + j]) ---- */
+/* ====================== 2次元配列 (行列) ====================== */
+/* 連続メモリの row-major 行列: A(i,j) = a[i*cols + j] */
 struct Mat {
   long rows, cols;
   double * a;
   Mat(long r, long c)             : rows(r), cols(c), a(new double[r * c]) {}
   Mat(long r, long c, double * p) : rows(r), cols(c), a(p) {}   /* 既存バッファを引き取る */
+  Mat(Mat && o) noexcept : rows(o.rows), cols(o.cols), a(o.a) { o.a = nullptr; }
   ~Mat() { delete[] a; }
   Mat(const Mat &) = delete;                  /* コピー禁止 (二重 delete を防ぐ) */
   Mat & operator=(const Mat &) = delete;
@@ -36,7 +36,8 @@ struct Mat {
   double * data() { return a; }
 };
 
-/* ---- .npy 読み込み: 任意の数値型を double 配列に読み込む (C順, 1〜2次元) ---- */
+/* ====================== .npy 入出力 ====================== */
+/* .npy を読み, 任意の数値型を double 配列に読み込む (C順, 1〜2次元) */
 static double * read_npy(const char * path, long shape[2], int * ndim) {
   FILE * f = fopen(path, "rb");
   if (!f) { printf("%s が開けません\n", path); exit(1); }
@@ -83,7 +84,27 @@ static double * read_npy(const char * path, long shape[2], int * ndim) {
   return out;
 }
 
-/* ---- .npy 書き出し: double 配列を float64 の .npy として書く (C順, 1〜2次元) ---- */
+/* .npy を2次元の行列として読む (1次元なら cols=1) */
+static Mat read_npy_mat(const char * path) {
+  long sh[2]; int nd;
+  double * a = read_npy(path, sh, &nd);
+  return Mat(sh[0], (nd == 2 ? sh[1] : 1), a);
+}
+
+/* .npy を1次元のベクトルとして読む */
+static double * read_npy_vec(const char * path) {
+  long sh[2]; int nd;
+  return read_npy(path, sh, &nd);
+}
+
+/* 画像 .npy (uint8 0..255) を読み, 0..1 に正規化した行列 [N,784] を返す */
+static Mat load_images(const char * path) {
+  Mat X = read_npy_mat(path);
+  for (long i = 0; i < X.rows * X.cols; i++) X.data()[i] /= 255.0;
+  return X;
+}
+
+/* double 配列を float64 の .npy として書き出す (C順, s1=0 なら1次元) */
 static void write_npy(const char * path, const double * data, long s0, long s1) {
   FILE * f = fopen(path, "wb");
   if (!f) { printf("%s が書けません\n", path); exit(1); }
@@ -107,6 +128,35 @@ static void write_npy(const char * path, const double * data, long s0, long s1) 
   fclose(f);
 }
 
+/* ====================== 行列演算・活性化 ====================== */
+/* 行列ベクトル積 + バイアス: y = W x + b  (W: rows×cols, x: cols, y: rows) */
+static void matvec(const Mat & W, const double * b, const double * x, double * y) {
+  for (long i = 0; i < W.rows; i++) {
+    double s = b[i];
+    for (long j = 0; j < W.cols; j++) s += W(i, j) * x[j];
+    y[i] = s;
+  }
+}
+
+static void relu_inplace(double * v, long n) {
+  for (long i = 0; i < n; i++) if (v[i] < 0.0) v[i] = 0.0;
+}
+
+static void softmax_inplace(double * v, long n) {
+  double mx = v[0];
+  for (long i = 1; i < n; i++) if (v[i] > mx) mx = v[i];
+  double s = 0.0;
+  for (long i = 0; i < n; i++) { v[i] = exp(v[i] - mx); s += v[i]; }
+  for (long i = 0; i < n; i++) v[i] /= s;
+}
+
+static int argmax(const double * v, long n) {
+  int best = 0;
+  for (long i = 1; i < n; i++) if (v[i] > v[best]) best = (int)i;
+  return best;
+}
+
+/* ====================== 学習の心臓部 ====================== */
 /* 状態を持たない乱数 (初期値生成用): (seed,k) から [0,1)。 */
 static inline double draw_rand01(long long seed, long long k) {
   const long long M = 2147483647LL;
@@ -117,34 +167,73 @@ static inline double draw_rand01(long long seed, long long k) {
   return (double)x / (double)M;
 }
 
+/* He 初期化 (バイアスは別途 0 にする) */
+static void init_he(Mat & W, long long salt) {
+  double scale = sqrt(2.0 / W.cols) * 2.0;
+  for (long k = 0; k < W.rows * W.cols; k++)
+    W.data()[k] = (draw_rand01(k, salt) - 0.5) * scale;
+}
+
+/* 1サンプルの forward + backprop。勾配を g... に加算し, 損失と正否を返す。
+   勾配は配列 reduction の対象なので生ポインタで受け取り gW1[...] で加算する。 */
+struct LossCorrect { double loss; int correct; };
+static LossCorrect forward_backward(const Mat & W1, const double * b1,
+                                    const Mat & W2, const double * b2,
+                                    const double * x, int label,
+                                    double * gW1, double * gb1,
+                                    double * gW2, double * gb2) {
+  const int HID = W1.rows, IN = W1.cols, OUT = W2.rows;
+  double h[1024], o[64];                          /* HID<=1024, OUT<=64 を仮定 */
+  matvec(W1, b1, x, h); relu_inplace(h, HID);     /* h = ReLU(W1 x + b1) */
+  matvec(W2, b2, h, o); softmax_inplace(o, OUT);  /* p = softmax(W2 h + b2) */
+
+  LossCorrect r;
+  r.loss = -log(o[label] + 1e-12);
+  r.correct = (argmax(o, OUT) == label) ? 1 : 0;
+
+  double dout[64];                                /* do = p - onehot(label) */
+  for (int c = 0; c < OUT; c++) dout[c] = o[c] - (c == label ? 1.0 : 0.0);
+  for (int c = 0; c < OUT; c++) {                 /* gW2 += do h^T, gb2 += do */
+    gb2[c] += dout[c];
+    for (int k = 0; k < HID; k++) gW2[c * HID + k] += dout[c] * h[k];
+  }
+  for (int k = 0; k < HID; k++) {                 /* dh = (W2^T do)・[h>0] */
+    if (h[k] <= 0.0) continue;
+    double dh = 0.0;
+    for (int c = 0; c < OUT; c++) dh += W2(c, k) * dout[c];
+    gb1[k] += dh;                                 /* gW1 += dh x^T, gb1 += dh */
+    for (int j = 0; j < IN; j++) gW1[k * IN + j] += dh * x[j];
+  }
+  return r;
+}
+
+/* 勾配降下の1ステップ: W -= sc * gW,  b -= sc * gb */
+static void sgd_update(Mat & W, double * b, const double * gW, const double * gb, double sc) {
+  for (long i = 0; i < W.rows; i++) {
+    for (long j = 0; j < W.cols; j++) W(i, j) -= sc * gW[i * W.cols + j];
+    b[i] -= sc * gb[i];
+  }
+}
+
+/* ====================== main ====================== */
 int main(int argc, char ** argv) {
   int    E  = (argc > 1 ? atoi(argv[1]) : 20);    /* エポック数 */
   double lr = (argc > 2 ? atof(argv[2]) : 0.1);   /* 学習率 */
   int    BS = (argc > 3 ? atoi(argv[3]) : 100);   /* ミニバッチサイズ */
-  const int IN = 784, HID = 128, OUT = 10;
 
-  /* --- 訓練データの読み込み (画素 0..255 -> 0..1 に正規化) --- */
-  long sx[2], sy[2]; int nd;
-  double * xr = read_npy("data/x_train.npy", sx, &nd);   /* [N,784] */
-  long N = sx[0];
-  for (long i = 0; i < N * IN; i++) xr[i] /= 255.0;
-  Mat X(N, IN, xr);
-  double * yd = read_npy("data/y_train.npy", sy, &nd);   /* [N] */
-  int * y = new int[N];
-  for (long i = 0; i < N; i++) y[i] = (int)yd[i];
-  delete[] yd;
+  /* 訓練データの読み込み */
+  Mat X = load_images("data/x_train.npy");        /* [N, IN], 0..1 正規化済み */
+  double * y = read_npy_vec("data/y_train.npy");
+  const int IN = X.cols, HID = 128, OUT = 10;
+  long N = X.rows;
 
-  /* --- パラメータ初期化 (He 初期化, バイアスは 0) --- */
+  /* パラメータ初期化 (He 初期化, バイアスは 0) */
   Mat W1(HID, IN), W2(OUT, HID);
-  double * b1 = new double[HID];
-  double * b2 = new double[OUT];
-  double s1 = sqrt(2.0 / IN), s2 = sqrt(2.0 / HID);
-  for (long k = 0; k < (long)HID * IN; k++)  W1.data()[k] = (draw_rand01(k, 1) - 0.5) * 2.0 * s1;
-  for (int k = 0; k < HID; k++)              b1[k] = 0.0;
-  for (long k = 0; k < (long)OUT * HID; k++) W2.data()[k] = (draw_rand01(k, 2) - 0.5) * 2.0 * s2;
-  for (int k = 0; k < OUT; k++)              b2[k] = 0.0;
+  double * b1 = new double[HID]();
+  double * b2 = new double[OUT]();
+  init_he(W1, 1); init_he(W2, 2);
 
-  /* 勾配の総和を入れる配列。配列 reduction の対象なので生のポインタで扱う。 */
+  /* 勾配の総和を入れる配列 (配列 reduction の対象なので生ポインタ) */
   double * gW1 = new double[HID * IN];
   double * gb1 = new double[HID];
   double * gW2 = new double[OUT * HID];
@@ -155,66 +244,25 @@ int main(int argc, char ** argv) {
   for (int ep = 0; ep < E; ep++) {
     loss = 0.0; correct = 0;
     for (long b0 = 0; b0 < N; b0 += BS) {
-      long b1n = (b0 + BS < N) ? b0 + BS : N;        /* バッチ [b0, b1n) */
+      long b1n = (b0 + BS < N) ? b0 + BS : N;      /* バッチ [b0, b1n) */
       long m = b1n - b0;
-      memset(gW1, 0, sizeof(double) * HID * IN);
-      memset(gb1, 0, sizeof(double) * HID);
-      memset(gW2, 0, sizeof(double) * OUT * HID);
-      memset(gb2, 0, sizeof(double) * OUT);
+      memset(gW1, 0, sizeof(double) * HID * IN); memset(gb1, 0, sizeof(double) * HID);
+      memset(gW2, 0, sizeof(double) * OUT * HID); memset(gb2, 0, sizeof(double) * OUT);
 
-      /* バッチ内の全サンプルにわたる forward + backprop。各サンプルの勾配寄与を総和。
+      /* バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
          損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。 */
       // BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2[:OUT*HID],gb1[:HID],gW1[:HID*IN]).
 #pragma omp parallel for reduction(+:loss,correct,gb2[:OUT],gW2[:OUT*HID],gb1[:HID],gW1[:HID*IN])
       // END ANSWER
       for (long i = b0; i < b1n; i++) {
-        double h[128];                          /* HID=128 */
-        for (int k = 0; k < HID; k++) {         /* h = ReLU(W1 x + b1) */
-          double z = b1[k];
-          for (int j = 0; j < IN; j++) z += W1(k, j) * X(i, j);
-          h[k] = (z > 0.0) ? z : 0.0;
-        }
-        double o[10], omax = -1e300;            /* o = W2 h + b2 */
-        for (int c = 0; c < OUT; c++) {
-          double z = b2[c];
-          for (int k = 0; k < HID; k++) z += W2(c, k) * h[k];
-          o[c] = z; if (z > omax) omax = z;
-        }
-        double sum = 0.0;                        /* p = softmax(o) */
-        for (int c = 0; c < OUT; c++) { o[c] = exp(o[c] - omax); sum += o[c]; }
-        int best = 0; double bestv = -1.0;
-        for (int c = 0; c < OUT; c++) {
-          o[c] /= sum;
-          if (o[c] > bestv) { bestv = o[c]; best = c; }
-        }
-        loss -= log(o[y[i]] + 1e-12);
-        if (best == y[i]) correct++;
-        /* backprop: do = p - onehot(y) */
-        double dout[10];
-        for (int c = 0; c < OUT; c++) dout[c] = o[c] - (c == y[i] ? 1.0 : 0.0);
-        for (int c = 0; c < OUT; c++) {
-          gb2[c] += dout[c];
-          for (int k = 0; k < HID; k++) gW2[c * HID + k] += dout[c] * h[k];
-        }
-        for (int k = 0; k < HID; k++) {          /* dh = (W2^T do)・[h>0] */
-          if (h[k] <= 0.0) continue;
-          double dh = 0.0;
-          for (int c = 0; c < OUT; c++) dh += W2(c, k) * dout[c];
-          gb1[k] += dh;
-          for (int j = 0; j < IN; j++) gW1[k * IN + j] += dh * X(i, j);
-        }
+        LossCorrect r = forward_backward(W1, b1, W2, b2, &X(i, 0), (int)y[i],
+                                         gW1, gb1, gW2, gb2);
+        loss += r.loss; correct += r.correct;
       }
 
-      /* 更新 (バッチ内勾配を平均して降下) */
-      double sc = lr / (double)m;
-      for (int k = 0; k < HID; k++) {
-        for (int j = 0; j < IN; j++) W1(k, j) -= sc * gW1[k * IN + j];
-        b1[k] -= sc * gb1[k];
-      }
-      for (int c = 0; c < OUT; c++) {
-        for (int k = 0; k < HID; k++) W2(c, k) -= sc * gW2[c * HID + k];
-        b2[c] -= sc * gb2[c];
-      }
+      double sc = lr / (double)m;                  /* バッチ内勾配を平均して降下 */
+      sgd_update(W1, b1, gW1, gb1, sc);
+      sgd_update(W2, b2, gW2, gb2, sc);
     }
     loss /= (double)N;
     if (ep % 5 == 0 || ep == E - 1)
@@ -226,7 +274,7 @@ int main(int argc, char ** argv) {
          N, HID, E, loss, 100.0 * correct / N);
   printf("elapsed = %.3f sec\n", elapsed);
 
-  /* --- 学習済みの重みを .npy で書き出す (00_mnist_infer が読む) --- */
+  /* 学習済みの重みを .npy で書き出す (00_mnist_infer が読む) */
   write_npy("data/W1.npy", W1.data(), HID, IN);
   write_npy("data/b1.npy", b1, HID, 0);
   write_npy("data/W2.npy", W2.data(), OUT, HID);

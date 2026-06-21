@@ -2,15 +2,13 @@
 ! ネットワーク: 入力 784 (28x28画像) -> 隠れ層 HID=128 (ReLU) -> 出力 10クラス。
 ! forward -> softmax クロスエントロピー損失 -> backprop -> ミニバッチ勾配降下 を繰り返す。
 ! 並列化対象は「ミニバッチ内の全サンプルにわたる勾配の和」(配列 reduction)。
-! 配列はすべてネイティブの多次元配列で表す (Fortran は配列 reduction も配列名のまま書ける)。
-! 入出力はNumPy標準の .npy 形式:
-!   読み: data/x_train.npy (uint8 [N,784]), data/y_train.npy (int32 [N])
-!   書き: data/W1.npy, b1.npy, W2.npy, b2.npy (float64) -> 00_mnist_infer が読む
-! read_npy / write_npy は下のモジュールに用意してある (I/O は主眼ではない)。
+! 配列はすべてネイティブの多次元配列 (Fortran は配列 reduction も配列名のまま書ける)。
+! 1サンプルの forward+backprop は forward_backward に, 更新は sgd_update にまとめてある。
+! 入出力はNumPy標準の .npy 形式 (read_npy / write_npy を用意)。
 
-module npy_io
+module mlp
 contains
-  ! .npy を読み, 中身を「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる。
+  ! --- .npy を読み, 中身を「保存順 (C順) のまま」flat な real(8) 配列 a(1:n) に入れる ---
   subroutine read_npy(path, a, s0, s1, ndim)
     character(*), intent(in) :: path
     real(8), allocatable, intent(out) :: a(:)
@@ -58,7 +56,7 @@ contains
     close(u)
   end subroutine read_npy
 
-  ! flat な real(8) 配列 a (C順) を float64 の .npy として書き出す。s1=0 なら1次元。
+  ! --- flat な real(8) 配列 a (C順) を float64 の .npy として書き出す (s1=0 なら1次元) ---
   subroutine write_npy(path, a, s0, s1)
     character(*), intent(in) :: path
     real(8), intent(in) :: a(:)
@@ -85,7 +83,7 @@ contains
     close(u)
   end subroutine write_npy
 
-  ! 状態を持たない乱数 (初期値生成用): (seed,k) から [0,1)。
+  ! --- 状態を持たない乱数 (初期値生成用): (seed,k) から [0,1) ---
   function draw_rand01(seed, k) result(u)
     integer(8), intent(in) :: seed, k
     real(8) :: u
@@ -97,22 +95,84 @@ contains
     x = modulo(ieor(x, ishft(x, -16)), M)
     u = real(x, 8) / real(M, 8)
   end function draw_rand01
-end module npy_io
+
+  ! --- He 初期化 (W(n_in, n_out), バイアスは別途 0 にする) ---
+  subroutine init_he(W, salt)
+    real(8), intent(out) :: W(:,:)
+    integer(8), intent(in) :: salt
+    integer :: nin, nout, k, j
+    real(8) :: scale
+    nin = size(W,1); nout = size(W,2); scale = sqrt(2.0d0/nin) * 2.0d0
+    do k = 1, nout
+       do j = 1, nin
+          W(j,k) = (draw_rand01(int((k-1)*nin+(j-1),8), salt) - 0.5d0) * scale
+       end do
+    end do
+  end subroutine init_he
+
+  ! --- 行列ベクトル積 + バイアス: y = W x + b  (W(n_in, n_out), x(n_in), y(n_out)) ---
+  subroutine matvec(W, b, x, y)
+    real(8), intent(in)  :: W(:,:), b(:), x(:)
+    real(8), intent(out) :: y(:)
+    integer :: k, j
+    do k = 1, size(W,2)
+       y(k) = b(k)
+       do j = 1, size(W,1)
+          y(k) = y(k) + W(j,k) * x(j)
+       end do
+    end do
+  end subroutine matvec
+
+  ! --- 1サンプルの forward + backprop。勾配 g... に加算し, 損失と正否を返す ---
+  subroutine forward_backward(W1, b1, W2, b2, x, label, gW1, gb1, gW2, gb2, sloss, scorr)
+    real(8), intent(in)    :: W1(:,:), b1(:), W2(:,:), b2(:), x(:)
+    integer, intent(in)    :: label
+    real(8), intent(inout) :: gW1(:,:), gb1(:), gW2(:,:), gb2(:)
+    real(8), intent(out)   :: sloss
+    integer, intent(out)   :: scorr
+    integer :: HID, IN, OUT, k, j, c
+    real(8) :: h(size(W1,2)), o(size(W2,2)), dout(size(W2,2)), dh
+    HID = size(W1,2); IN = size(W1,1); OUT = size(W2,2)
+    call matvec(W1, b1, x, h); h = max(0.0d0, h)    ! h = ReLU(W1 x + b1)
+    call matvec(W2, b2, h, o)                        ! o = W2 h + b2
+    o = exp(o - maxval(o)); o = o / sum(o)           ! p = softmax(o)
+    sloss = -log(o(label+1) + 1.0d-12)               ! ラベル 0..9, 添字 1..OUT
+    scorr = merge(1, 0, maxloc(o,1)-1 == label)
+    dout = o; dout(label+1) = dout(label+1) - 1.0d0  ! do = p - onehot(label)
+    do c = 1, OUT                                    ! gW2 += do h^T, gb2 += do
+       gb2(c) = gb2(c) + dout(c)
+       do k = 1, HID; gW2(k,c) = gW2(k,c) + dout(c)*h(k); end do
+    end do
+    do k = 1, HID                                    ! dh = (W2^T do)・[h>0]
+       if (h(k) <= 0.0d0) cycle
+       dh = 0.0d0
+       do c = 1, OUT; dh = dh + W2(k,c)*dout(c); end do
+       gb1(k) = gb1(k) + dh                          ! gW1 += dh x^T, gb1 += dh
+       do j = 1, IN; gW1(j,k) = gW1(j,k) + dh*x(j); end do
+    end do
+  end subroutine forward_backward
+
+  ! --- 勾配降下の1ステップ: W -= sc * gW,  b -= sc * gb ---
+  subroutine sgd_update(W, b, gW, gb, sc)
+    real(8), intent(inout) :: W(:,:), b(:)
+    real(8), intent(in)    :: gW(:,:), gb(:), sc
+    W = W - sc*gW
+    b = b - sc*gb
+  end subroutine sgd_update
+end module mlp
 
 program mlp_train
-  use npy_io
+  use mlp
   use omp_lib
   implicit none
   integer, parameter :: IN = 784, HID = 128, OUT = 10
   character(len=32) :: arg
-  integer :: E, BS, ep, c, k, j, s0, s1, nd, best
+  integer :: E, BS, ep, s0, s1, nd, scorr
   integer(8) :: N, i, b0, b1n, m
-  real(8) :: lr, loss, z, omax, ssum, sc, bestv, t0, elapsed, dh, sq1, sq2
+  real(8) :: lr, loss, sc, sloss, t0, elapsed
   integer(8) :: correct
-  ! ネイティブの多次元配列: 行列は2次元, ベクトルは1次元
   real(8), allocatable :: X(:,:), W1(:,:), W2(:,:), b1(:), b2(:)
   real(8), allocatable :: gW1(:,:), gW2(:,:), gb1(:), gb2(:), flat(:)
-  real(8) :: h(HID), o(OUT), dout(OUT)
   integer, allocatable :: y(:)
 
   E = 20; lr = 0.1d0; BS = 100
@@ -120,26 +180,16 @@ program mlp_train
   if (command_argument_count() >= 2) then; call get_command_argument(2, arg); read(arg,*) lr; end if
   if (command_argument_count() >= 3) then; call get_command_argument(3, arg); read(arg,*) BS; end if
 
-  ! --- 訓練データの読み込み (.npy は C順なので reshape でネイティブ配列の並びになる) ---
+  ! 訓練データの読み込み (画素 0..255 -> 0..1), X(:,i) が画像 i
   call read_npy("data/x_train.npy", flat, s0, s1, nd); N = s0
-  X = reshape(flat, [IN, int(N)]) / 255.0d0    ! X(j,i) = 画像 i の画素 j
+  X = reshape(flat, [IN, int(N)]) / 255.0d0
   call read_npy("data/y_train.npy", flat, s0, s1, nd)
   allocate(y(N)); y = nint(flat(1:N))
 
-  ! --- パラメータ初期化 (He 初期化) ---
+  ! パラメータ初期化 (He 初期化, バイアスは 0)
   allocate(W1(IN,HID), W2(HID,OUT), b1(HID), b2(OUT))
   allocate(gW1(IN,HID), gW2(HID,OUT), gb1(HID), gb2(OUT))
-  sq1 = sqrt(2.0d0/IN); sq2 = sqrt(2.0d0/HID)
-  do k = 1, HID
-     do j = 1, IN
-        W1(j,k) = (draw_rand01(int((k-1)*IN+(j-1),8), 1_8) - 0.5d0)*2.0d0*sq1
-     end do
-  end do
-  do c = 1, OUT
-     do k = 1, HID
-        W2(k,c) = (draw_rand01(int((c-1)*HID+(k-1),8), 2_8) - 0.5d0)*2.0d0*sq2
-     end do
-  end do
+  call init_he(W1, 1_8); call init_he(W2, 2_8)
   b1 = 0.0d0; b2 = 0.0d0
 
   loss = 0.0d0; correct = 0
@@ -151,62 +201,24 @@ program mlp_train
         m = b1n - b0
         gW1 = 0.0d0; gW2 = 0.0d0; gb1 = 0.0d0; gb2 = 0.0d0
 
-        ! バッチ内の全サンプルにわたる forward + backprop。勾配を総和する。
+        ! バッチ内の各サンプルの勾配寄与を総和する。各サンプルは独立。
         ! 損失・正解数はスカラ reduction, 勾配は配列 reduction で競合を避ける。
-        ! BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: !$omp parallel do private(...) reduction(+:loss,correct,gb2,gW2,gb1,gW1) (h,o,dout は private)。
-        !$omp parallel do private(i,j,k,c,z,omax,ssum,best,bestv,dh,h,o,dout) &
+        ! BEGIN ANSWER: バッチのループを配列 reduction で並列化せよ: !$omp parallel do private(...) reduction(+:loss,correct,gb2,gW2,gb1,gW1)。
+        !$omp parallel do private(i,sloss,scorr) &
         !$omp   reduction(+:loss,correct,gb2,gW2,gb1,gW1)
         ! END ANSWER
         do i = b0 + 1, b1n
-           do k = 1, HID                     ! h = ReLU(W1 x + b1)
-              z = b1(k)
-              do j = 1, IN
-                 z = z + W1(j,k) * X(j,i)
-              end do
-              h(k) = max(0.0d0, z)
-           end do
-           omax = -1d300                      ! o = W2 h + b2
-           do c = 1, OUT
-              z = b2(c)
-              do k = 1, HID
-                 z = z + W2(k,c) * h(k)
-              end do
-              o(c) = z; if (z > omax) omax = z
-           end do
-           ssum = 0.0d0                        ! softmax
-           do c = 1, OUT; o(c) = exp(o(c)-omax); ssum = ssum + o(c); end do
-           best = 1; bestv = -1.0d0
-           do c = 1, OUT
-              o(c) = o(c)/ssum
-              if (o(c) > bestv) then; bestv = o(c); best = c; end if
-           end do
-           loss = loss - log(o(y(i)+1) + 1.0d-12)
-           if (best-1 == y(i)) correct = correct + 1
-           ! backprop: do = p - onehot(y)  (ラベル 0..9, 添字は 1..OUT)
-           do c = 1, OUT; dout(c) = o(c) - merge(1.0d0,0.0d0, c == y(i)+1); end do
-           do c = 1, OUT
-              gb2(c) = gb2(c) + dout(c)
-              do k = 1, HID
-                 gW2(k,c) = gW2(k,c) + dout(c)*h(k)
-              end do
-           end do
-           do k = 1, HID                       ! dh = (W2^T do)・[h>0]
-              if (h(k) <= 0.0d0) cycle
-              dh = 0.0d0
-              do c = 1, OUT; dh = dh + W2(k,c)*dout(c); end do
-              gb1(k) = gb1(k) + dh
-              do j = 1, IN
-                 gW1(j,k) = gW1(j,k) + dh * X(j,i)
-              end do
-           end do
+           call forward_backward(W1, b1, W2, b2, X(:,i), y(i), &
+                                 gW1, gb1, gW2, gb2, sloss, scorr)
+           loss = loss + sloss; correct = correct + scorr
         end do
         ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
         !$omp end parallel do
         ! END ANSWER
 
-        ! 更新 (バッチ内勾配を平均して降下。配列ごと一括で書ける)
-        sc = lr / real(m, 8)
-        W1 = W1 - sc*gW1; W2 = W2 - sc*gW2; b1 = b1 - sc*gb1; b2 = b2 - sc*gb2
+        sc = lr / real(m, 8)                 ! バッチ内勾配を平均して降下
+        call sgd_update(W1, b1, gW1, gb1, sc)
+        call sgd_update(W2, b2, gW2, gb2, sc)
      end do
      loss = loss / real(N, 8)
      if (mod(ep,5) == 0 .or. ep == E-1) &
@@ -219,8 +231,7 @@ program mlp_train
        ", epochs=", E, ", loss=", loss, ", train acc=", 100.0d0*correct/N, "%"
   print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 
-  ! --- 学習済みの重みを .npy で書き出す (00_mnist_infer が読む) ---
-  ! 列優先のネイティブ配列 W1(IN,HID) の線形並びは C順 (HID,IN) に一致する
+  ! 学習済みの重みを .npy で書き出す (列優先 W1(IN,HID) の線形並び = C順 (HID,IN))
   call write_npy("data/W1.npy", reshape(W1, [IN*HID]), HID, IN)
   call write_npy("data/b1.npy", b1, HID, 0)
   call write_npy("data/W2.npy", reshape(W2, [HID*OUT]), OUT, HID)
