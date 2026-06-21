@@ -34,7 +34,7 @@ program regression
   integer(8) :: N, i
   real(8) :: lr, loss, z, p, eps, score, xv, g, t0, elapsed
   integer(8) :: correct
-  real(8), allocatable :: w_true(:), X(:), w(:), grad(:), err(:)
+  real(8), allocatable :: w_true(:), X(:,:), w(:), grad(:), err(:)
   integer, allocatable :: y(:)
 
   N = 200000_8; D = 20; E = 200; lr = 1.0d0
@@ -53,7 +53,7 @@ program regression
 
   ! 真の重み w_true (= 学習で復元したい正解), 範囲 [-1,1)。添字 0 始まり。
   allocate(w_true(0:D-1), w(0:D-1), grad(0:D-1))
-  allocate(X(0:N*D-1), y(0:N-1), err(0:N-1))
+  allocate(X(0:D-1, 0:N-1), y(0:N-1), err(0:N-1))
   do jd = 0, D - 1
      w_true(jd) = draw_rand01(int(jd,8), 7_8) * 2.0d0 - 1.0d0
   end do
@@ -63,7 +63,7 @@ program regression
      score = 0.0d0
      do jd = 0, D - 1
         xv = draw_rand01(i, int(jd,8)) - 0.5d0
-        X(i*D + jd) = xv
+        X(jd, i) = xv
         score = score + w_true(jd) * xv
      end do
      if (score > 0.0d0) then
@@ -84,13 +84,14 @@ program regression
      correct = 0_8
      ! 各サンプルの予測 p = sigmoid(w・x_i), 誤差 err(i) = p - y_i,
      ! 損失・正解数を集計する。各サンプルは独立なので並列化できる。
-     ! BEGIN ANSWER: サンプルのループを !$omp parallel do reduction(+:loss,correct) で並列化せよ.
+     ! TODO: このサンプルのループを並列化して集計する (各サンプルは独立)。
+     ! BEGIN ANSWER
      !$omp parallel do private(i, jd, z, p, predc) reduction(+:loss,correct)
      ! END ANSWER
      do i = 0, N - 1
         z = 0.0d0
         do jd = 0, D - 1
-           z = z + w(jd) * X(i*D + jd)
+           z = z + w(jd) * X(jd, i)
         end do
         p = sigmoid(z)
         err(i) = p - real(y(i), 8)
@@ -106,7 +107,7 @@ program regression
         end if
         if (predc == y(i)) correct = correct + 1
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      loss = loss / real(N, 8)
@@ -116,7 +117,7 @@ program regression
      do jd = 0, D - 1
         g = 0.0d0
         do i = 0, N - 1
-           g = g + err(i) * X(i*D + jd)
+           g = g + err(i) * X(jd, i)
         end do
         grad(jd) = g / real(N, 8)
      end do

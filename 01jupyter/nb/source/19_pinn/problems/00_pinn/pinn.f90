@@ -90,7 +90,8 @@ program pinn
   do it = 0, steps - 1
      ! パラメータについての差分勾配。各 j は独立 (loss は純関数なので各スレッドが
      ! 自分のコピー pp を摂動して評価する)。
-     ! BEGIN ANSWER: 3H 個のパラメータの差分勾配ループを !$omp parallel do private(j,q,pp,lp,lm) で並列化せよ (各反復で loss_fn を 2 回呼ぶ)。
+     ! TODO: 3H 個のパラメータの差分勾配ループを並列化する (各 j は独立, loss_fn を2回評価)。
+     ! BEGIN ANSWER
      !$omp parallel do private(j,q,pp,lp,lm)
      ! END ANSWER
      do j = 1, NP
@@ -103,7 +104,7 @@ program pinn
         grad(j) = (lp - lm) / (2.0d0 * eps)
         deallocate(pp)
      end do
-     ! BEGIN ANSWER: 上で始めた parallel do 領域を閉じる (!$omp end parallel do)。
+     ! BEGIN ANSWER
      !$omp end parallel do
      ! END ANSWER
      do j = 1, NP
