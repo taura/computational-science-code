@@ -20,10 +20,11 @@
 
 # 成果物イメージ
 
-- 各トピックは、このディレクトリ (`nb/source`) の直下に、トピック順の番号を付けたフォルダとして置く (例: `01_intro`, `02_parallel`, ..., `13_ilp`)。`output` フォルダは使わない
+- 各トピックは、このディレクトリ (`nb/source`) の直下に、トピック順の番号を付けたフォルダとして置く (例: `00_intro`, `01_CF_primer`, `02_parallel`, ..., `19_pinn`)。`output` フォルダは使わない
 - トピックごとにひとつ .py ファイルがある (フォルダ内に置く。例: `02_parallel/parallel.py`)。ファイルの形式は上記の .py ファイルから推論せよ。ほとんどがコメントで、""" md ... """ が本文。 """ code """ ... """ """ がコードセルとなって Jupyter で実行させる。
 - トピックの粒度は今より少し細かいものをイメージしている。以下が実際のフォルダ構成 (トピック順)
-  - `01_intro` --- C++, Fortran 入門
+  - `00_intro` --- 環境の使い方 (Jupyter, コンパイラ, ジョブ投入, AIチュータ)
+  - `01_CF_primer` --- C++, Fortran 入門 (旧 `01_intro`)
   - `02_parallel` --- parallel, `omp_get_num_threads()`, `omp_get_thread_num()`
   - `03_for_collapse` --- for, collapse
   - `04_schedule` --- schedule
@@ -36,6 +37,12 @@
   - `11_simd` --- SIMD (SIMD directive)
   - `12_simd_intrinsics` --- SIMD intrinsics
   - `13_ilp` --- ILP
+  - `14_montecarlo` --- 応用: モンテカルロ法
+  - `15_pde_fdm` --- 応用: 偏微分方程式 (差分法)
+  - `16_nbody` --- 応用: N体問題
+  - `17_linalg` --- 応用: 線形代数 (CG法・固有値)
+  - `18_ml` --- 応用: AI (ニューラルネットワーク)
+  - `19_pinn` --- 応用: PINN
 - 各トピックフォルダの構成
   - トップレベルの .py ファイル (そのトピックを説明する本文)
   - `include/` --- .py から `""" include nb/source/<NN_topic>/include/<file> """` で取り込むソース (C++ の `.cpp` と Fortran の `.f90`)。include のパスは `nb/source/` から始まる絶対的な指定なので、フォルダ名を変えたら .py 内のパスも合わせて直すこと
