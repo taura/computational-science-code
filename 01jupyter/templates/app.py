@@ -19,6 +19,7 @@ import heytutor
 import wisteria_submit
 """ """
 
+{setup}
 """ md
 # C++ ベースコード
 """

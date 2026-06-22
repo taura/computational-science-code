@@ -20,3 +20,7 @@ notebooks/source/
 
 # 穴あきコード (strip_answer.py の生成物) は .ipynb に埋め込まれるので追跡しない
 nb/source/**/to_students/
+
+# MNIST の重み出力 / 共有領域への symlink (学習で生成 or 別途配布) は追跡しない
+nb/source/**/weights/
+nb/source/**/weights

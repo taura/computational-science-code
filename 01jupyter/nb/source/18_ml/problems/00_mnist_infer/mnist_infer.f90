@@ -168,11 +168,11 @@ program mnist_infer
   integer(8) :: correct
   real(8) :: t0, elapsed
 
-  i  = load_npy("data/W1.npy", net%W1, HID, IN)
-  i  = load_npy("data/b1.npy", net%b1, HID, 0)
-  i  = load_npy("data/W2.npy", net%W2, OUT, HID)
-  i  = load_npy("data/b2.npy", net%b2, OUT, 0)
-  NT = load_npy("data/x_test.npy", net%X, MAXN, IN)
+  i  = load_npy("weights/W1.npy", net%W1, HID, IN)   ! 学習済みの重み (weights/ は共有領域への symlink)
+  i  = load_npy("weights/b1.npy", net%b1, HID, 0)
+  i  = load_npy("weights/W2.npy", net%W2, OUT, HID)
+  i  = load_npy("weights/b2.npy", net%b2, OUT, 0)
+  NT = load_npy("data/x_test.npy", net%X, MAXN, IN)  ! テスト画像 (data/ も symlink)
   i  = load_npy("data/y_test.npy", net%y, MAXN, 0)
   net%X(:, 1:NT) = net%X(:, 1:NT) / 255.0d0     ! 0..255 -> 0..1
 

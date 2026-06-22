@@ -151,11 +151,11 @@ static long count_correct(Net & net, int m) {
 static Net net;          /* 画像・中間も含み大きいので静的領域に置く */
 
 int main(int argc, char ** argv) {
-  load_npy("data/W1.npy", &net.W1[0][0], HID, IN);
-  load_npy("data/b1.npy", net.b1, HID, 0);
-  load_npy("data/W2.npy", &net.W2[0][0], OUT, HID);
-  load_npy("data/b2.npy", net.b2, OUT, 0);
-  int NT = (int)load_npy("data/x_test.npy", &net.X[0][0], MAXN, IN);
+  load_npy("weights/W1.npy", &net.W1[0][0], HID, IN);   /* 学習済みの重み (weights/ は共有領域への symlink) */
+  load_npy("weights/b1.npy", net.b1, HID, 0);
+  load_npy("weights/W2.npy", &net.W2[0][0], OUT, HID);
+  load_npy("weights/b2.npy", net.b2, OUT, 0);
+  int NT = (int)load_npy("data/x_test.npy", &net.X[0][0], MAXN, IN);   /* テスト画像 (data/ も symlink) */
   load_npy("data/y_test.npy", net.y, MAXN, 0);
   for (long k = 0; k < (long)NT * IN; k++) (&net.X[0][0])[k] /= 255.0;   /* 0..255 -> 0..1 */
 

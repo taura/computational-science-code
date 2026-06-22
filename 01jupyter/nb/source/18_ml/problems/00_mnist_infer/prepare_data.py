@@ -19,8 +19,8 @@ out = os.path.join(here, "data")
 os.makedirs(out, exist_ok=True)
 
 d = np.load(os.path.expanduser("~/.keras/datasets/mnist.npz"))
-x = d["x_test"][:NTEST].reshape(NTEST, 784).astype(np.uint8)   # 画素は 0..255 のまま
-y = d["y_test"][:NTEST].astype(np.int32)
+x = d["x_test"][:].reshape(-1, 784).astype(np.uint8)   # 画素は 0..255 のまま
+y = d["y_test"][:].astype(np.int32)
 np.save(os.path.join(out, "x_test.npy"), x)
 np.save(os.path.join(out, "y_test.npy"), y)
 print(f"wrote {out}/x_test.npy {x.shape} {x.dtype}, y_test.npy {y.shape} {y.dtype}")

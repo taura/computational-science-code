@@ -3,13 +3,13 @@
 !
 ! ミニバッチ (m 枚) を「行列」としてまとめて流す。各ステップはバッチ中の全サンプルを
 ! 一度に処理する行列演算で, forward / backward は下のプリミティブを呼ぶだけ:
-!   forward:  H = ReLU(W1 X + b1) = dense_relu,  P = softmax(W2 H + b2) = dense_softmax
-!   backward: dO = P - onehot(y)  = out_grad
-!             gW2,gb2 = grad_weight(H, dO),  dH = back_relu(dO, W2, H),  gW1,gb1 = grad_weight(X, dH)
+!   forward:  H = matmul_bias(W1,X,b1); relu(H),  P = matmul_bias(W2,H,b2); softmax(P)
+!   backward: dO = out_grad(P,y),  gW2,gb2 = grad_weight(H,dO),
+!             dH = matmul_back(dO,W2); relu_mask(dH,H),  gW1,gb1 = grad_weight(X,dH)
 !   更新:     W -= (lr/m) gW
-! 勾配は行列積で求まり, サンプル(バッチ)方向の和は行列積の内側の縮約になる。よって
-! 並列化は各プリミティブの独立な出力方向ループの parallel do だけでよく, 勾配への配列
-! reduction は不要 (損失・正解数のスカラ集計だけ reduction を使う)。
+! 行列積 (matmul_bias / matmul_back / grad_weight) を活性化 (relu/softmax/…) から分け,
+! 重い行列積を並列化する (活性化は要素ごとで軽いので逐次)。サンプル方向の和は行列積の
+! 内側の縮約なので, 勾配への配列 reduction は不要 (損失・正解数のスカラ集計のみ reduction)。
 ! パラメータ・バッチ・中間行列・勾配を固定サイズ配列で派生型 net_t にまとめる。
 ! net_t は allocatable 成分を持たないので GPU 発展で map(to: net) がそのまま使える。
 
@@ -366,9 +366,9 @@ program mlp_train
        ", epochs=", E, ", loss=", loss, ", train acc=", 100.0d0*correct/N, "%"
   print "(a,f0.3,a)", "elapsed = ", elapsed, " sec"
 
-  call write_npy("data/W1.npy", reshape(net%W1, [IN*HID]), HID, IN)
-  call write_npy("data/b1.npy", net%b1, HID, 0)
-  call write_npy("data/W2.npy", reshape(net%W2, [HID*OUT]), OUT, HID)
-  call write_npy("data/b2.npy", net%b2, OUT, 0)
-  print "(a)", "重みを data/W1.npy, b1.npy, W2.npy, b2.npy に保存しました"
+  call write_npy("weights/W1.npy", reshape(net%W1, [IN*HID]), HID, IN)
+  call write_npy("weights/b1.npy", net%b1, HID, 0)
+  call write_npy("weights/W2.npy", reshape(net%W2, [HID*OUT]), OUT, HID)
+  call write_npy("weights/b2.npy", net%b2, OUT, 0)
+  print "(a)", "重みを weights/W1.npy, b1.npy, W2.npy, b2.npy に保存しました"
 end program mlp_train

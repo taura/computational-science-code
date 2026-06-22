@@ -54,8 +54,11 @@ define deploy_problem
 # .py -> .ipynb
 $(out_dir)/$(nn_topic)/$(topic).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md
+# 問題ごとに setup.py (任意) があれば, その中身をテンプレの {setup} に流し込む
+# (データ/重みの準備セルなど。無ければ {setup} は空になる)。setup.py は .py 形式なのでセルになる。
+$(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb :  $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/setup.py)
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).ipynb :  $(in_dir)/$(nn_topic)/problems/$(nn_problem)/$(problem).py
-	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) mpflag=$(mpflag) $$< | ./mk_nb.py --syntax wisteria - > $$@
+	./format_string.py in_dir=$(in_dir) out_dir=$(out_dir) nn_topic=$(nn_topic) topic=$(topic) nn_problem=$(nn_problem) problem=$(problem) mpflag=$(mpflag) setup="$$$$(cat $(in_dir)/$(nn_topic)/problems/$(nn_problem)/setup.py 2>/dev/null)" $$< | ./mk_nb.py --syntax wisteria - > $$@
 
 # problem.md -> copy (内容なのでそのままコピー. コード中の波括弧を format しないこと)
 $(out_dir)/$(nn_topic)/problems/$(nn_problem)/problem.md : $(out_dir)/$(nn_topic)/problems/$(nn_problem)/dir
@@ -96,7 +99,7 @@ $(foreach nn_topic,$(nn_topics),\
     $(foreach nn_problem,$(call dir_in,$(in_dir)/$(nn_topic)/problems),\
       $(foreach problem,$(call problem_of,$(nn_problem)),\
         $(call EVAL,$(call deploy_problem)) \
-        $(if $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/data),$(call EVAL,$(call deploy_data))) \
+        $(if $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/data),$(if $(wildcard $(in_dir)/$(nn_topic)/problems/$(nn_problem)/setup.py),,$(call EVAL,$(call deploy_data)))) \
         $(foreach lang,$(langs),\
 	  $(call EVAL,$(call deploy_code)) \
 )))))

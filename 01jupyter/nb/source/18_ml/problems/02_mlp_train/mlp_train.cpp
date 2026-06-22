@@ -309,11 +309,11 @@ int main(int argc, char ** argv) {
          N, HID, E, loss, 100.0 * correct / N);
   printf("elapsed = %.3f sec\n", elapsed);
 
-  write_npy("data/W1.npy", &net.W1[0][0], HID, IN);
-  write_npy("data/b1.npy", net.b1, HID, 0);
-  write_npy("data/W2.npy", &net.W2[0][0], OUT, HID);
-  write_npy("data/b2.npy", net.b2, OUT, 0);
-  printf("重みを data/W1.npy, b1.npy, W2.npy, b2.npy に保存しました\n");
+  write_npy("weights/W1.npy", &net.W1[0][0], HID, IN);
+  write_npy("weights/b1.npy", net.b1, HID, 0);
+  write_npy("weights/W2.npy", &net.W2[0][0], OUT, HID);
+  write_npy("weights/b2.npy", net.b2, OUT, 0);
+  printf("重みを weights/W1.npy, b1.npy, W2.npy, b2.npy に保存しました\n");
 
   delete[] Xall; delete[] yall;
   return 0;
