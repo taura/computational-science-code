@@ -6,7 +6,7 @@ program matmul
   integer(8) :: n, i, j, k, err
   real(8), allocatable :: A(:,:), B(:,:), C(:,:)
   real(8) :: a_ik, t0, dt, gflops, expected
-  n = 1024
+  n = 2048
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if

@@ -24,7 +24,7 @@ program count_primes
   use prime_mod
   character(len=64) :: arg
   integer(8) :: N, i, count
-  N = 300000_8
+  N = 8000000_8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) N
   end if

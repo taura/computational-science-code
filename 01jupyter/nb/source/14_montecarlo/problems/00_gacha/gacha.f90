@@ -46,7 +46,7 @@ program gacha
   integer(8) :: T, t_, total, totalsq, d
   real(8) :: mean, var, H, t0, elapsed
   N = 10
-  T = 1000000_8
+  T = 8000000_8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) N
   end if

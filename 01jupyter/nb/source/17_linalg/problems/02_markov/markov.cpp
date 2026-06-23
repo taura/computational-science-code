@@ -59,7 +59,7 @@ void matvec(const Mat & M, const Vec & x, Vec & y) {
 }
 
 int main(int argc, char ** argv) {
-  int    S     = (argc > 1 ? atoi(argv[1]) : 1000);   /* マスの数 (0..S-1 の輪) */
+  int    S     = (argc > 1 ? atoi(argv[1]) : 870);   /* マスの数 (0..S-1 の輪) */
   double tol   = (argc > 2 ? atof(argv[2]) : 1e-10);
   int    maxit = (argc > 3 ? atoi(argv[3]) : 100000);
 

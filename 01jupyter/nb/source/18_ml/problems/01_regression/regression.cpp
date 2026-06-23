@@ -55,7 +55,7 @@ static inline double sigmoid(double z) { return 1.0 / (1.0 + exp(-z)); }
 int main(int argc, char ** argv) {
   long N = (argc > 1 ? atol(argv[1]) : 200000);  /* サンプル数 */
   int  D = (argc > 2 ? atoi(argv[2]) : 20);      /* 特徴次元 */
-  int  E = (argc > 3 ? atoi(argv[3]) : 200);     /* エポック数 */
+  int  E = (argc > 3 ? atoi(argv[3]) : 130);     /* エポック数 */
   double lr = (argc > 4 ? atof(argv[4]) : 1.0);  /* 学習率 */
 
   /* 真の重み w_true (= 学習で復元したい正解), 範囲 [-1,1)。 */

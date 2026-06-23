@@ -31,10 +31,10 @@ OMP_PROC_BIND=true OMP_NUM_THREADS=1  ./matmul_cpp.exe
 OMP_PROC_BIND=true OMP_NUM_THREADS=8  ./matmul_cpp.exe
 ```
 
-`n` はコマンドライン引数で指定できる (既定 1024). `A[i]=1`, `B[i]=2` としているので各要素は `2*n` になり, `check: OK` で正しさを確認できる.
+`n` はコマンドライン引数で指定できる (既定 2048). `A[i]=1`, `B[i]=2` としているので各要素は `2*n` になり, `check: OK` で正しさを確認できる.
 
 ## 期待される結果
 
-- `n=1024 : XX.XXX GFLOPS  (check: OK)` のように表示される.
+- `n=2048 : XX.XXX GFLOPS  (check: OK)` のように表示される.
 - `OMP_NUM_THREADS` を `1, 2, 4, 8, ...` と増やすと GFLOPS が伸びる (台数効果). `OMP_PROC_BIND=true` でスレッドをコアに固定すると安定する.
 - 05_speedup の matmul はマルチコア化のみ, 本問はそこに SIMD を重ねたものである. GPU 版の行列積 (10 番台) とも比較し, CPU のピーク性能 (コア数 × SIMD幅 × FMA × クロック) にどこまで近づけるか考えてみよ.

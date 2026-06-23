@@ -36,7 +36,7 @@ program boids
   real(8) :: box, R, Rs, wc, wa, ws, speed, dt, P0
   real(8) :: cx, cy, avx, avy, sx, sy, ax, ay, dx, dy, d2, nvx, nvy, s, ang, t0, elapsed
   real(8), allocatable :: px(:), py(:), vx(:), vy(:), qx(:), qy(:), ux(:), uy(:), tmp(:)
-  N = 1000; steps = 300
+  N = 1500; steps = 300
   box = 30.0d0; R = 15.0d0; Rs = 2.0d0
   wc = 0.01d0; wa = 0.2d0; ws = 0.05d0; speed = 1.0d0; dt = 1.0d0
   if (command_argument_count() >= 1) then

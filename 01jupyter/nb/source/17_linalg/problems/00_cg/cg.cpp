@@ -68,7 +68,7 @@ double dot(const Mat & a, const Mat & b) {
 }
 
 int main(int argc, char ** argv) {
-  int    n   = (argc > 1 ? atoi(argv[1]) : 128);    /* 格子の一辺 (未知数は N = n*n) */
+  int    n   = (argc > 1 ? atoi(argv[1]) : 480);    /* 格子の一辺 (未知数は N = n*n) */
   double tol = (argc > 2 ? atof(argv[2]) : 1e-8);
   long   N   = (long)n * n;
   int    maxit = 10 * n;

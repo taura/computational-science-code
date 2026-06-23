@@ -10,7 +10,7 @@ int is_prime(long k) {
 }
 
 int main(int argc, char ** argv) {
-  long N = (argc > 1 ? atol(argv[1]) : 300000L);
+  long N = (argc > 1 ? atol(argv[1]) : 8000000L);
   long count = 0;
   // TODO: 下のループを #pragma omp parallel for schedule(runtime) reduction(+:count) で並列化せよ.
   // BEGIN ANSWER

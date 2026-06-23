@@ -37,7 +37,7 @@ program regression
   real(8), allocatable :: w_true(:), X(:,:), w(:), grad(:), err(:)
   integer, allocatable :: y(:)
 
-  N = 200000_8; D = 20; E = 200; lr = 1.0d0
+  N = 200000_8; D = 20; E = 130; lr = 1.0d0
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) N
   end if

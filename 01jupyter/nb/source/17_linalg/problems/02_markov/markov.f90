@@ -40,7 +40,7 @@ program markov
   real(8) :: tol, total, diff, e, sm, t0, elapsed
   integer :: top(0:2)
   real(8), allocatable :: M(:,:), pi(:), pin(:)
-  S = 1000; tol = 1d-10; maxit = 100000
+  S = 870; tol = 1d-10; maxit = 100000
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) S
   end if

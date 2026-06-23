@@ -69,7 +69,7 @@ program cg
   integer :: n, maxit, it, i, j
   real(8) :: tol, rs, rs_new, alpha, beta, err, t0, elapsed
   real(8), allocatable :: xt(:,:), b(:,:), x(:,:), r(:,:), p(:,:), Ap(:,:)
-  n = 128; tol = 1d-8
+  n = 480; tol = 1d-8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if

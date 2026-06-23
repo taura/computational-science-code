@@ -21,7 +21,7 @@ program montecarlo_pi
   character(len=64) :: arg
   integer(8) :: n, i, count
   real(8) :: x, y, pi
-  n = 100_8 * 1000_8 * 1000_8
+  n = 200_8 * 1000_8 * 1000_8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if

@@ -27,7 +27,7 @@ program reduction_sum
   character(len=64) :: arg
   real(8) :: a, b, s
   integer(8) :: n
-  a = 0.0d0; b = 1.0d0; n = 1000_8 * 1000_8 * 1000_8
+  a = 0.0d0; b = 1.0d0; n = 4000_8 * 1000_8 * 1000_8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) a
   end if

@@ -49,7 +49,7 @@ int one_trial(int L, double p, long long seed) {
 int main(int argc, char ** argv) {
   int    L = (argc > 1 ? atoi(argv[1]) : 128);     /* 格子の一辺 */
   double p = (argc > 2 ? atof(argv[2]) : 0.6);     /* セルが開く確率 */
-  long   T = (argc > 3 ? atol(argv[3]) : 2000);    /* 試行回数 */
+  long   T = (argc > 3 ? atol(argv[3]) : 15000);    /* 試行回数 */
   long   perc = 0;
 
   /* T 回の試行は互いに独立。浸透した回数を数える。

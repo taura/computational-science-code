@@ -55,10 +55,10 @@ nvc++ -fast -mp=multicore pinn.cpp -o pinn.exe
 nvfortran -fast -mp=multicore pinn.f90 -o pinn.exe
 ```
 
-引数: 隠れユニット数 `H` (既定 16), コロケーション点数 `M` (既定 50), ステップ数 `steps` (既定 4000), 学習率 `lr` (既定 0.01)。
+引数: 隠れユニット数 `H` (既定 16), コロケーション点数 `M` (既定 60), ステップ数 `steps` (既定 4000), 学習率 `lr` (既定 0.01)。
 
 ```
-OMP_NUM_THREADS=4 ./pinn.exe 16 50 4000 0.01
+OMP_NUM_THREADS=4 ./pinn.exe 16 60 4000 0.01
 ```
 
 ## 期待される結果
@@ -69,7 +69,7 @@ step 1000: loss=1.129228e-02
 step 2000: loss=9.033110e-04
 step 3000: loss=4.090927e-04
 step 3999: loss=3.807349e-04
-H=16, M=50, steps=4000, lr=0.01
+H=16, M=60, steps=4000, lr=0.01
 final max|u - sin(pi x)| = 1.2837e-04
 elapsed = ... sec
 ```

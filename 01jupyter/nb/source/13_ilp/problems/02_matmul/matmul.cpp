@@ -23,7 +23,7 @@ void matmul(long n, double * A, double * B, double * C) {
 }
 
 int main(int argc, char ** argv) {
-  long n = (argc > 1 ? atol(argv[1]) : 1024);
+  long n = (argc > 1 ? atol(argv[1]) : 2048);
   double * A = (double *)malloc(sizeof(double) * n * n);
   double * B = (double *)malloc(sizeof(double) * n * n);
   double * C = (double *)malloc(sizeof(double) * n * n);

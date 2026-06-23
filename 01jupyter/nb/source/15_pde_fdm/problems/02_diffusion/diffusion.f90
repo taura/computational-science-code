@@ -13,7 +13,7 @@ program diffusion
   real(8), pointer :: u(:,:), un(:,:), tmp(:,:)
   integer :: lo, hi
   character(len=32) :: arg
-  L = 256; steps = 500; alpha = 0.2d0
+  L = 1500; steps = 500; alpha = 0.2d0
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) L
   end if

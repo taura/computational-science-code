@@ -45,7 +45,7 @@ double polarization(const Mat & vel) {
 }
 
 int main(int argc, char ** argv) {
-  int N     = (argc > 1 ? atoi(argv[1]) : 1000);   /* 個体数 */
+  int N     = (argc > 1 ? atoi(argv[1]) : 1500);   /* 個体数 */
   int steps = (argc > 2 ? atoi(argv[2]) : 300);    /* 時間ステップ数 */
   /* ルールのパラメータ */
   double box = 30.0;        /* 正方形領域 (周期境界) */

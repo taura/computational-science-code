@@ -8,7 +8,7 @@ program mandelbrot
   character(len=32) :: arg
 
   ! 画像サイズと最大反復数
-  W = 1000; H = 1000; maxiter = 1000
+  W = 2000; H = 2000; maxiter = 2000
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read(arg, *) W
   end if

@@ -3,9 +3,9 @@
 
 int main(int argc, char **argv) {
   // 画像サイズと最大反復数
-  int W = (argc > 1) ? atoi(argv[1]) : 1000;
-  int H = (argc > 2) ? atoi(argv[2]) : 1000;
-  int maxiter = (argc > 3) ? atoi(argv[3]) : 1000;
+  int W = (argc > 1) ? atoi(argv[1]) : 2000;
+  int H = (argc > 2) ? atoi(argv[2]) : 2000;
+  int maxiter = (argc > 3) ? atoi(argv[3]) : 2000;
 
   int *cnt = (int *)malloc((size_t)W * H * sizeof(int));
 

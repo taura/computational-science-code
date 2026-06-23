@@ -70,7 +70,7 @@ program percolation
   integer(8) :: T, t_, perc
   L = 128
   p = 0.6d0
-  T = 2000_8
+  T = 15000_8
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) L
   end if

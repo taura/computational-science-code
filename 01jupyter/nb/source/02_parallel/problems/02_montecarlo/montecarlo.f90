@@ -11,7 +11,7 @@ program montecarlo
      call get_command_argument(1, arg)
      read(arg, *) n
   else
-     n = 4000000_8
+     n = 200000000_8
   end if
 
   ! TODO: 下のブロックを !$omp parallel private(tid, nt, lo, hi, my_n, hits, i, x, y, pi) ... !$omp end parallel で囲み, 各スレッドが自分の担当分の点を投げて自分の π 推定値を表示するようにせよ.

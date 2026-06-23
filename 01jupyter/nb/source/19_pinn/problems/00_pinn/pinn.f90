@@ -57,7 +57,7 @@ program pinn
   real(8) :: lr, lambda_bc, eps, lp, lm, L, x, u, e, maxerr, t0, elapsed
   real(8), allocatable :: xs(:), p(:), grad(:), pp(:)
 
-  H = 16; M = 50; steps = 4000; lr = 0.01d0
+  H = 16; M = 60; steps = 4000; lr = 0.01d0
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) H
   end if

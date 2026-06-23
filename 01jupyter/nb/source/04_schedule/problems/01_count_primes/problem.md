@@ -30,14 +30,14 @@ nvfortran -fast -mp=multicore count_primes.f90 -o count_primes.exe
 ```
 export OMP_NUM_THREADS=4
 
-OMP_SCHEDULE=static          time ./count_primes.exe 300000
-OMP_SCHEDULE=dynamic         time ./count_primes.exe 300000
-OMP_SCHEDULE=dynamic,100     time ./count_primes.exe 300000
-OMP_SCHEDULE=guided          time ./count_primes.exe 300000
+OMP_SCHEDULE=static          time ./count_primes.exe 8000000
+OMP_SCHEDULE=dynamic         time ./count_primes.exe 8000000
+OMP_SCHEDULE=dynamic,100     time ./count_primes.exe 8000000
+OMP_SCHEDULE=guided          time ./count_primes.exe 8000000
 ```
 
 ## 期待される結果と考察
 
-- 素数の個数 (`number of primes <= 300000 : 25997`) は, どの schedule でも**同じ**になることを確認せよ.
+- 素数の個数 (`number of primes <= 8000000 : 539777`) は, どの schedule でも**同じ**になることを確認せよ.
 - 実行時間は schedule によって変わる. `static` は各スレッドに連番の塊を等分するため, 大きい数 (重い) を担当したスレッドだけ遅くなり, 全体が遅い側に引きずられる. `dynamic` や `guided` は終わったスレッドが次の塊を取りに行くので負荷の偏りが平準化され, 一般に速くなる.
 - いくつかの schedule を試し, 最も速かったものを選べ. `dynamic,100` のようにチャンクサイズを変えると挙動が変わることも確認せよ.

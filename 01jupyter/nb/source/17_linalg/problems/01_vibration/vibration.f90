@@ -70,7 +70,7 @@ program vibration
   real(8) :: vn, sgn, vecerr, v, pi, t0, elapsed
   real(8), allocatable :: x(:,:), y(:,:), Ax(:,:), ve(:,:)
   pi = 4.0d0 * atan(1.0d0)
-  n = 128; tol = 1d-9; maxit = 100000
+  n = 208; tol = 1d-9; maxit = 100000
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) n
   end if

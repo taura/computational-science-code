@@ -9,7 +9,7 @@ program heat2d
   real(8), allocatable, target :: a(:,:), b(:,:)
   real(8), pointer :: u(:,:), unew(:,:), tmp(:,:)
   character(len=32) :: arg
-  L = 129; tol = 1d-6; maxiter = 1000000
+  L = 160; tol = 1d-6; maxiter = 1000000
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) L
   end if

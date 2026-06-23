@@ -24,7 +24,7 @@ struct Mat {
 };
 
 int main(int argc, char ** argv) {
-  int    L       = (argc > 1 ? atoi(argv[1]) : 129);     /* 一辺の格子点数 */
+  int    L       = (argc > 1 ? atoi(argv[1]) : 160);     /* 一辺の格子点数 */
   double tol     = (argc > 2 ? atof(argv[2]) : 1e-6);    /* 収束判定 (最大更新量) */
   int    maxiter = (argc > 3 ? atoi(argv[3]) : 1000000);
 

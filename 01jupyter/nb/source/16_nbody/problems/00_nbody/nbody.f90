@@ -68,7 +68,7 @@ program nbody
   integer :: N, steps, t, i
   real(8) :: dt, eps, E0, E1, t0, elapsed
   real(8), allocatable :: pos(:,:), vel(:,:), acc(:,:), mass(:)
-  N = 2000; steps = 100; dt = 0.001d0; eps = 0.05d0
+  N = 3800; steps = 100; dt = 0.001d0; eps = 0.05d0
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) N
   end if

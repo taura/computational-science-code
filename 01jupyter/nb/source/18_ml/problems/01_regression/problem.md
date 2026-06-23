@@ -39,10 +39,10 @@ nvc++ -fast -mp=multicore regression.cpp -o regression.exe
 nvfortran -fast -mp=multicore regression.f90 -o regression.exe
 ```
 
-引数: サンプル数 `N` (既定 200000), 特徴次元 `D` (既定 20), エポック数 `E` (既定 200), 学習率 `lr` (既定 1.0)。
+引数: サンプル数 `N` (既定 200000), 特徴次元 `D` (既定 20), エポック数 `E` (既定 130), 学習率 `lr` (既定 1.0)。
 
 ```
-OMP_NUM_THREADS=4 ./regression.exe 200000 20 200 1.0
+OMP_NUM_THREADS=4 ./regression.exe 200000 20 130 1.0
 ```
 
 ## 期待される結果
@@ -51,7 +51,7 @@ OMP_NUM_THREADS=4 ./regression.exe 200000 20 200 1.0
 epoch   0: loss=0.6931, acc=...%
 epoch  50: loss=..., acc=...%
 ...
-最終: N=200000, D=20, epochs=200, loss=..., acc=99..%
+最終: N=200000, D=20, epochs=130, loss=..., acc=99..%
 elapsed = ... sec
 ```
 

@@ -26,7 +26,7 @@ struct Mat {
 };
 
 int main(int argc, char ** argv) {
-  int    L     = (argc > 1 ? atoi(argv[1]) : 257);     /* 一辺の格子点数 */
+  int    L     = (argc > 1 ? atoi(argv[1]) : 2049);     /* 一辺の格子点数 */
   int    steps = (argc > 2 ? atoi(argv[2]) : 200);     /* 時間ステップ数 */
   double coef  = 0.25;                                 /* (c*dt/dx)^2, 安定 */
 

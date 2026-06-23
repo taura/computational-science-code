@@ -80,7 +80,7 @@ static double loss_fn(int H, const double * p, int M, const double * xs, double 
 
 int main(int argc, char ** argv) {
   int    H     = (argc > 1 ? atoi(argv[1]) : 16);     /* 隠れユニット数 */
-  int    M     = (argc > 2 ? atoi(argv[2]) : 50);     /* コロケーション点数 */
+  int    M     = (argc > 2 ? atoi(argv[2]) : 60);     /* コロケーション点数 */
   int    steps = (argc > 3 ? atoi(argv[3]) : 4000);   /* 勾配降下ステップ数 */
   double lr    = (argc > 4 ? atof(argv[4]) : 0.01);   /* 学習率 */
   double lambda_bc = 10.0;

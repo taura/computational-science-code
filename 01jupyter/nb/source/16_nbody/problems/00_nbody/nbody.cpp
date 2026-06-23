@@ -87,7 +87,7 @@ double energy(const Mat & pos, const Mat & vel, const Vec & mass, double eps) {
 }
 
 int main(int argc, char ** argv) {
-  int    N     = (argc > 1 ? atoi(argv[1]) : 2000);   /* 粒子数 */
+  int    N     = (argc > 1 ? atoi(argv[1]) : 3800);   /* 粒子数 */
   int    steps = (argc > 2 ? atoi(argv[2]) : 100);    /* 時間ステップ数 */
   double dt = 0.001, eps = 0.05;
 

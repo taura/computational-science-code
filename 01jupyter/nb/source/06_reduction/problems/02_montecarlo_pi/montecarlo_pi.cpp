@@ -16,7 +16,7 @@ static inline double draw_rand01(long long seed, long long k) {
 }
 
 int main(int argc, char ** argv) {
-  long n = (1 < argc ? atol(argv[1]) : 100L * 1000L * 1000L);
+  long n = (1 < argc ? atol(argv[1]) : 200L * 1000L * 1000L);
   long count = 0;               /* 単位円の 1/4 の内側に入った点数 */
   printf("n = %ld\n", n);
   /* 単位正方形 [0,1)x[0,1) に n 点を投げ, 半径 1 の円の内側に入った点を数える。

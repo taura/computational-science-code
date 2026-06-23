@@ -35,7 +35,7 @@ long one_trial(int N, long long seed) {
 
 int main(int argc, char ** argv) {
   int  N = (argc > 1 ? atoi(argv[1]) : 10);          /* 景品の種類数 */
-  long T = (argc > 2 ? atol(argv[2]) : 1000000);     /* 試行回数 */
+  long T = (argc > 2 ? atol(argv[2]) : 8000000);     /* 試行回数 */
   /* 引き回数は整数なので整数で集計する → 足す順番によらず答えが完全に一致する */
   long long total = 0, totalsq = 0;
 

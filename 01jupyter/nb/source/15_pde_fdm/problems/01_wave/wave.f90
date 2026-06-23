@@ -11,7 +11,7 @@ program wave
   real(8), allocatable, target :: arr1(:,:), arr2(:,:), arr3(:,:)
   real(8), pointer :: up(:,:), cu(:,:), nx(:,:), tmp(:,:)
   character(len=32) :: arg
-  L = 257; steps = 200; coef = 0.25d0
+  L = 2049; steps = 200; coef = 0.25d0
   if (command_argument_count() >= 1) then
      call get_command_argument(1, arg); read (arg, *) L
   end if
