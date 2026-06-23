@@ -25,7 +25,7 @@ program schedule_dynamic
   ! END ANSWER
   do i = 0, n - 1
      ! 繰り返し i の仕事量は i に比例して重くなる (アンバランス)
-     total = total + work(int(i, 8) * 100000_8)
+     total = total + work(int(i, 8) * 1500_8)
   end do
   ! BEGIN ANSWER
   !$omp end parallel do

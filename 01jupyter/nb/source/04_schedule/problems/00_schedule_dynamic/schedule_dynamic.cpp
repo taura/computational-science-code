@@ -19,7 +19,7 @@ int main() {
   // END ANSWER
   for (int i = 0; i < n; i++) {
     /* 繰り返し i の仕事量は i に比例して重くなる (アンバランス) */
-    total += work((long)i * 100000L);
+    total += work((long)i * 1500L);
   }
   printf("total = %f\n", total);
   return 0;
