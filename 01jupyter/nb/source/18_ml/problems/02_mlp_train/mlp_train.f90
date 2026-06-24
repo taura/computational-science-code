@@ -16,7 +16,7 @@
 module mlp
   implicit none
   integer, parameter :: IN = 784, HID = 128, OUT = 10
-  integer, parameter :: MAX_BATCH = 1000        ! ミニバッチの最大サイズ
+  integer, parameter :: MAX_BATCH = 60000       ! BS の上限 (= 全データ枚数)。BS を上げると 1 ステップの行列積 = 並列仕事量が増える
   type :: net_t
      real(8) :: W1(IN,HID), b1(HID), W2(HID,OUT), b2(OUT)        ! パラメータ
      real(8) :: X(IN,MAX_BATCH), y(MAX_BATCH)                    ! 入力バッチ(列=1枚)とラベル

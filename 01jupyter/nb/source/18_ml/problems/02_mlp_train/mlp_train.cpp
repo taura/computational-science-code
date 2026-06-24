@@ -26,7 +26,7 @@
    Net は内部にポインタを持たないので, GPU 発展では map(to: net) でまるごと送れる。 */
 
 static const int IN = 784, HID = 128, OUT = 10;
-static const int MAX_BATCH = 1000;       /* ミニバッチの最大サイズ */
+static const int MAX_BATCH = 60000;      /* BS の上限 (= 全データ枚数)。BS を上げると 1 ステップの行列積 = 並列仕事量が増える */
 
 struct Net {
   double W1[HID][IN], b1[HID], W2[OUT][HID], b2[OUT];  /* パラメータ */
