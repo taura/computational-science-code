@@ -42,10 +42,10 @@ nvc++ -fast -mp=multicore mlp_train.cpp -o mlp_train.exe
 nvfortran -fast -mp=multicore mlp_train.f90 -o mlp_train.exe
 ```
 
-引数: エポック数 `E` (既定 20), 学習率 `lr` (既定 0.1), ミニバッチサイズ `BS` (既定 100)。
+引数: エポック数 `E` (既定 20), 学習率 `lr` (既定 0.7), ミニバッチサイズ `BS` (既定 600)。
 
 ```
-OMP_NUM_THREADS=4 ./mlp_train.exe 20 0.1 100
+OMP_NUM_THREADS=4 ./mlp_train.exe 20 0.7 600
 ```
 
 **並列仕事量を増やすには**: 1 ステップの行列積の大きさは **バッチ幅 `BS` × 隠れ次元 `HID`** で決まる (層1 は `BS×HID×IN`)。並列化はバッチ方向なので, **`BS` を大きくする** (最大 `60000` = 全データ。`BS` を上げるとミニバッチ数が減り 1 ステップが重い行列積になる) ほど 1 ステップの並列仕事量が増え, 多コア・GPU を飽和させやすくなる。`HID` (既定 128) も同様に効くが, こちらはコンパイル時定数 (固定長配列・テンプレートのため) なのでソースを編集して変える。なお推論 `00_mnist_infer` は学習済み重みと同じ `HID` で読むので, `HID` を変えるなら**学習と推論で一致**させること (テスト枚数 10000 は標準データに固定)。
@@ -53,16 +53,17 @@ OMP_NUM_THREADS=4 ./mlp_train.exe 20 0.1 100
 ## 期待される結果
 
 ```
-epoch    0: loss=0.6???, train acc=8?.??%
-epoch    5: loss=0.1???, train acc=9?.??%
-...
-epoch   19: loss=0.0430, train acc=98.88%
-最終: N=60000, HID=128, epochs=20, loss=0.0430, train acc=98.88%
+epoch    0: loss=0.5875, train acc=82.43%
+epoch    5: loss=0.1103, train acc=96.87%
+epoch   10: loss=0.0662, train acc=98.17%
+epoch   15: loss=0.0456, train acc=98.81%
+epoch   19: loss=0.0353, train acc=99.11%
+最終: N=60000, HID=128, epochs=20, loss=0.0353, train acc=99.11%
 elapsed = ... sec
 重みを weights/W1.npy, b1.npy, W2.npy, b2.npy に保存しました
 ```
 
 - 学習が進むと **損失が下がり, 正解率が上がる**。終了時に学習済みの重みが `weights/W1.npy` などに保存される。
-- この重みを 推論 (18_ml/problems/00_mnist_infer) に渡すと, **未知のテスト画像を 9 割以上認識する** (汎化, 約 97.65%)。
+- この重みを 推論 (18_ml/problems/00_mnist_infer) に渡すと, **未知のテスト画像を 9 割以上認識する** (汎化, 約 97.76%)。
 - `OMP_NUM_THREADS` を増やすと `elapsed` が短くなる (台数効果)。正解率は本質的に同じになる。
 - (発展) 内側の行列積を SIMD 化, あるいは GPU にオフロードして更に高速化できる。

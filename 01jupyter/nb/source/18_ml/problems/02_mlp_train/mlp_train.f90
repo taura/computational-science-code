@@ -331,7 +331,7 @@ program mlp_train
   real(8) :: lr, loss, bl_loss, t0, elapsed
   real(8), allocatable :: Xall(:,:), yall(:)
 
-  E = 20; lr = 0.1d0; BS = 100
+  E = 20; lr = 0.7d0; BS = 600
   if (command_argument_count() >= 1) then; call get_command_argument(1, arg); read(arg,*) E;  end if
   if (command_argument_count() >= 2) then; call get_command_argument(2, arg); read(arg,*) lr; end if
   if (command_argument_count() >= 3) then; call get_command_argument(3, arg); read(arg,*) BS; end if
